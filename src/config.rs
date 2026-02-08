@@ -632,6 +632,12 @@ fn validate_path(path: &Path) -> Option<String> {
                 path.display()
             ));
         }
+        if matches!(component, std::path::Component::Prefix(_)) {
+            return Some(format!(
+                "drive-relative paths are not allowed: {}",
+                path.display()
+            ));
+        }
     }
 
     None
