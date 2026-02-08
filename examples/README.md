@@ -86,7 +86,7 @@ kabu untrust
 kabu untrust --list
 ```
 
-Hooks are only supported on Unix-like systems (Linux, macOS). Windows users should use Git Bash/WSL or the `--no-setup` flag.
+Hooks are supported on Unix-like systems (Linux, macOS) and Windows. On Windows, hooks run via an auto-detected shell (pwsh, powershell, Git Bash, or cmd). Override with `--hook-shell` or the `KABUHOOK_SHELL` environment variable.
 
 ## See Also
 
