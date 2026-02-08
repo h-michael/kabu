@@ -207,7 +207,16 @@ HOOKS:
         {{worktree_path}}    Full path to the worktree
         {{worktree_name}}    Worktree directory name
         {{branch}}           Branch name
-        {{repo_root}}        Repository root path")]
+        {{repo_root}}        Repository root path
+
+    Environment variables (raw, unescaped):
+        $KABU_WORKTREE_PATH  Full path to the worktree
+        $KABU_WORKTREE_NAME  Worktree directory name
+        $KABU_BRANCH         Branch name (empty if detached)
+        $KABU_REPO_ROOT      Repository root path
+        $KABU_VCS_TYPE       VCS type (\"git\" or \"jj\")
+        $KABU_CHANGE_ID      jj change ID (empty for git)
+        $KABU_COMMIT_ID      jj commit ID (empty for git)")]
 pub(crate) struct ConfigArgs {
     #[command(subcommand)]
     pub command: Option<ConfigCommand>,
@@ -600,6 +609,10 @@ HOOKS:
 
     Hooks can use template variables (see kabu config for details):
     {{worktree_path}}, {{worktree_name}}, {{branch}}, {{repo_root}}
+
+    Hooks also receive environment variables with raw (unescaped) values:
+    $KABU_WORKTREE_PATH, $KABU_WORKTREE_NAME, $KABU_BRANCH, $KABU_REPO_ROOT,
+    $KABU_VCS_TYPE, $KABU_CHANGE_ID, $KABU_COMMIT_ID
 
 EXAMPLES:
     kabu trust

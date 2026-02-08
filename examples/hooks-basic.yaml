@@ -39,6 +39,19 @@ hooks:
 #   {{branch}}          - Branch name
 #   {{repo_root}}       - Repository root path
 #
+# Environment variables (raw values, not shell-escaped):
+#   KABU_WORKTREE_PATH  - Full path to the worktree
+#   KABU_WORKTREE_NAME  - Worktree directory name
+#   KABU_BRANCH         - Branch name (empty if detached)
+#   KABU_REPO_ROOT      - Repository root path
+#   KABU_VCS_TYPE       - VCS type ("git" or "jj")
+#   KABU_CHANGE_ID      - jj change ID (empty for git)
+#   KABU_COMMIT_ID      - jj commit ID (empty for git)
+#
+# Use environment variables when you need raw values (e.g., tmux session management):
+#   post_add:  tmux new-session -d -s "kabu-$KABU_WORKTREE_NAME" -c "$KABU_WORKTREE_PATH"
+#   post_remove: tmux kill-session -t "kabu-$KABU_WORKTREE_NAME" 2>/dev/null || true
+#
 # Note: Each hook entry has:
 #   command     (required) - Shell command to execute
 #   description (optional) - Shown during execution instead of command

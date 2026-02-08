@@ -334,8 +334,32 @@ hooks:
 - `{{branch}}` - Branch name
 - `{{repo_root}}` - Repository root
 
+**Environment variables:**
+
+Hooks also receive the following environment variables, which contain raw (unescaped) values:
+- `KABU_WORKTREE_PATH` - Full path to worktree
+- `KABU_WORKTREE_NAME` - Worktree directory name
+- `KABU_BRANCH` - Branch name (empty if detached)
+- `KABU_REPO_ROOT` - Repository root
+- `KABU_VCS_TYPE` - VCS type ("git" or "jj")
+- `KABU_CHANGE_ID` - jj change ID (empty for git)
+- `KABU_COMMIT_ID` - jj commit ID (empty for git)
+
+Use environment variables when you need raw values without shell escaping (e.g., for tmux session management):
+```yaml
+hooks:
+  post_add:
+    - command: tmux new-session -d -s "kabu-$KABU_WORKTREE_NAME" -c "$KABU_WORKTREE_PATH"
+      description: Create tmux session
+  post_remove:
+    - command: tmux kill-session -t "kabu-$KABU_WORKTREE_NAME" 2>/dev/null || true
+      description: Remove tmux session
+```
+
 **Security:**
-- Variables are shell-escaped automatically (POSIX sh on Unix, PowerShell on Windows)
+- Template variables are shell-escaped automatically (POSIX sh on Unix, PowerShell on Windows)
+- Environment variables contain raw values and follow standard shell expansion rules
+- Always quote environment variable expansions in hook commands (`"$KABU_*"`, `"$env:KABU_*"`, `"%KABU_*%"`) to avoid shell injection from untrusted values
 - Must trust hooks via `kabu trust` before execution
 - Changes require re-trusting
 
@@ -344,6 +368,7 @@ hooks:
 - Override with `--hook-shell` or `KABUHOOK_SHELL` (`pwsh`, `powershell`, `bash`, `cmd`, `wsl`)
 - `--hook-shell` takes precedence over `KABUHOOK_SHELL`
 - `wsl` is only used when explicitly set, because Windows paths may not map to WSL
+- Environment variable syntax differs by shell: `$env:KABU_WORKTREE_NAME` (PowerShell), `%KABU_WORKTREE_NAME%` (cmd), `$KABU_WORKTREE_NAME` (bash/wsl)
 
 **Examples:** [examples/hooks-basic.yaml](examples/hooks-basic.yaml), [examples/nodejs-project.yaml](examples/nodejs-project.yaml)
 
