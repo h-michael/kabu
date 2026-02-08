@@ -262,7 +262,7 @@ impl WindowsShell {
 
 #[cfg(windows)]
 fn select_windows_shell_with_override(override_value: Option<&str>) -> Result<WindowsShell> {
-    let env_override = std::env::var("GWTHOOK_SHELL").ok();
+    let env_override = std::env::var("KABUHOOK_SHELL").ok();
     let override_value = override_value.or(env_override.as_deref());
     let path_var = std::env::var_os("PATH");
     let path_ext = std::env::var_os("PATHEXT");
@@ -332,7 +332,7 @@ fn parse_windows_shell_override_with(
         _ => {
             return Err(Error::HookExecutionFailed {
                 command: String::from(""),
-                cause: format!("Unsupported GWTHOOK_SHELL value: {value}"),
+                cause: format!("Unsupported KABUHOOK_SHELL value: {value}"),
             });
         }
     };

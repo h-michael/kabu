@@ -1518,8 +1518,19 @@ fn normalize_path(path: &Path) -> PathBuf {
                     parts.pop();
                 }
             }
-            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+            std::path::Component::Prefix(_) => {
                 parts.clear();
+                parts.push(component);
+            }
+            std::path::Component::RootDir => {
+                // On Windows, RootDir follows Prefix (e.g. C:\), so preserve
+                // the already-pushed Prefix instead of clearing.
+                if !parts
+                    .last()
+                    .is_some_and(|c| matches!(c, std::path::Component::Prefix(_)))
+                {
+                    parts.clear();
+                }
                 parts.push(component);
             }
             other => parts.push(other),
