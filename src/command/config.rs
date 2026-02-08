@@ -330,7 +330,8 @@ fn repo_config_template_yaml() -> String {
 }
 
 fn repo_config_template_toml() -> String {
-    r#"# kabu configuration
+    format!("#:schema {}\n", schema_url())
+        + r#"# kabu configuration
 # See: https://github.com/h-michael/kabu
 
 # Conflict handling for file operations
@@ -395,7 +396,6 @@ fn repo_config_template_toml() -> String {
 # command = "tmux kill-session -t \"kabu-$KABU_WORKTREE_NAME\" 2>/dev/null || true"
 # description = "Remove tmux session"
 "#
-    .to_string()
 }
 
 fn global_config_template(format: ConfigFormatArg) -> String {
@@ -514,7 +514,8 @@ fn global_config_template_yaml() -> String {
 
 #[cfg(windows)]
 fn global_config_template_toml() -> String {
-    r#"# Global kabu configuration
+    format!("#:schema {}\n", schema_url())
+        + r#"# Global kabu configuration
 # This file applies to all repositories and can be overridden by .kabu/config.yaml or .kabu/config.toml.
 
 # Allowed keys: on_conflict, auto_cd, worktree, ui, hooks.hook_shell
@@ -561,12 +562,12 @@ fn global_config_template_toml() -> String {
 # [hooks]
 # hook_shell = "pwsh"  # Windows-only: pwsh, powershell, bash, cmd, wsl
  "#
-    .to_string()
 }
 
 #[cfg(not(windows))]
 fn global_config_template_toml() -> String {
-    r#"# Global kabu configuration
+    format!("#:schema {}\n", schema_url())
+        + r#"# Global kabu configuration
 # This file applies to all repositories and can be overridden by .kabu/config.yaml or .kabu/config.toml.
 
 # Allowed keys: on_conflict, auto_cd, worktree, ui
@@ -610,5 +611,4 @@ fn global_config_template_toml() -> String {
 # warning = "default"
 # error = "default"
  "#
-    .to_string()
 }
