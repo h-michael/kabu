@@ -308,16 +308,22 @@ fn repo_config_template_yaml() -> String {
 #     target: config.json
 
 # Hooks (requires trust via `kabu trust`)
+# Template variables (shell-escaped): {{{{worktree_path}}}}, {{{{worktree_name}}}}, {{{{branch}}}}, {{{{repo_root}}}}
+# Environment variables (raw): $KABU_WORKTREE_PATH, $KABU_WORKTREE_NAME, $KABU_BRANCH, $KABU_REPO_ROOT, $KABU_VCS_TYPE
 # hooks:
 #   pre_add:
 #     - command: echo "Creating {{{{worktree_name}}}}"
 #   post_add:
 #     - command: npm install
 #       description: Install dependencies
+#     - command: tmux new-session -d -s "kabu-$KABU_WORKTREE_NAME" -c "$KABU_WORKTREE_PATH"
+#       description: Create tmux session
 #   pre_remove:
 #     - command: echo "Removing {{{{worktree_name}}}}"
 #   post_remove:
 #     - command: ./scripts/cleanup.sh
+#     - command: tmux kill-session -t "kabu-$KABU_WORKTREE_NAME" 2>/dev/null || true
+#       description: Remove tmux session
 "#,
         schema_url()
     )
@@ -365,6 +371,8 @@ fn repo_config_template_toml() -> String {
 # target = "config.json"
 
 # Hooks (requires trust via `kabu trust`)
+# Template variables (shell-escaped): {{worktree_path}}, {{worktree_name}}, {{branch}}, {{repo_root}}
+# Environment variables (raw): $KABU_WORKTREE_PATH, $KABU_WORKTREE_NAME, $KABU_BRANCH, $KABU_REPO_ROOT, $KABU_VCS_TYPE
 # [hooks]
 # [[hooks.pre_add]]
 # command = "echo 'Creating {{worktree_name}}'"
@@ -373,11 +381,19 @@ fn repo_config_template_toml() -> String {
 # command = "npm install"
 # description = "Install dependencies"
 #
+# [[hooks.post_add]]
+# command = "tmux new-session -d -s \"kabu-$KABU_WORKTREE_NAME\" -c \"$KABU_WORKTREE_PATH\""
+# description = "Create tmux session"
+#
 # [[hooks.pre_remove]]
 # command = "echo 'Removing {{worktree_name}}'"
 #
 # [[hooks.post_remove]]
 # command = "./scripts/cleanup.sh"
+#
+# [[hooks.post_remove]]
+# command = "tmux kill-session -t \"kabu-$KABU_WORKTREE_NAME\" 2>/dev/null || true"
+# description = "Remove tmux session"
 "#
     .to_string()
 }

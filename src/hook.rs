@@ -94,6 +94,20 @@ impl HookEnv {
     fn expand_template(&self, cmd: &str) -> String {
         self.expand_template_with(cmd, powershell_escape)
     }
+
+    /// Set environment variables on a Command for use in hook scripts.
+    ///
+    /// Unlike template variables, these are not shell-escaped, allowing hooks
+    /// to use raw values via standard shell variable expansion (e.g., `$KABU_WORKTREE_NAME`).
+    fn set_env(&self, cmd: &mut Command) {
+        cmd.env("KABU_WORKTREE_PATH", &self.worktree_path);
+        cmd.env("KABU_WORKTREE_NAME", &self.worktree_name);
+        cmd.env("KABU_BRANCH", self.branch.as_deref().unwrap_or(""));
+        cmd.env("KABU_REPO_ROOT", &self.repo_root);
+        cmd.env("KABU_VCS_TYPE", &self.vcs_type);
+        cmd.env("KABU_CHANGE_ID", self.change_id.as_deref().unwrap_or(""));
+        cmd.env("KABU_COMMIT_ID", self.commit_id.as_deref().unwrap_or(""));
+    }
 }
 
 /// Escape a string for safe use in shell commands.
@@ -156,6 +170,7 @@ fn execute_hook(command: &str, env: &HookEnv, working_dir: &Path) -> Result<()> 
         .current_dir(working_dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
+    env.set_env(&mut cmd);
 
     let status = cmd.status().map_err(|e| Error::HookExecutionFailed {
         command: command.to_string(),
@@ -188,6 +203,7 @@ fn execute_hook(command: &str, env: &HookEnv, working_dir: &Path) -> Result<()> 
         .current_dir(working_dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
+    env.set_env(&mut cmd);
 
     let status = cmd.status().map_err(|e| Error::HookExecutionFailed {
         command: command.to_string(),
@@ -813,5 +829,87 @@ mod tests {
 
         let result = env.expand_template("echo {{bookmark}}");
         assert!(result.contains("my-bookmark"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_execute_hook_sets_env_variables_git() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = HookEnv {
+            worktree_path: "/path/to/worktree".to_string(),
+            worktree_name: "my-feature".to_string(),
+            branch: Some("feature/test".to_string()),
+            repo_root: "/path/to/repo".to_string(),
+            vcs_type: "git".to_string(),
+            change_id: None,
+            commit_id: None,
+            hook_shell: None,
+        };
+
+        let output_file = dir.path().join("env_output.txt");
+
+        let command = format!(
+            concat!(
+                "echo \"KABU_WORKTREE_PATH=$KABU_WORKTREE_PATH\" > {0} && ",
+                "echo \"KABU_WORKTREE_NAME=$KABU_WORKTREE_NAME\" >> {0} && ",
+                "echo \"KABU_BRANCH=$KABU_BRANCH\" >> {0} && ",
+                "echo \"KABU_REPO_ROOT=$KABU_REPO_ROOT\" >> {0} && ",
+                "echo \"KABU_VCS_TYPE=$KABU_VCS_TYPE\" >> {0} && ",
+                "echo \"KABU_CHANGE_ID=$KABU_CHANGE_ID\" >> {0} && ",
+                "echo \"KABU_COMMIT_ID=$KABU_COMMIT_ID\" >> {0}",
+            ),
+            output_file.display()
+        );
+
+        execute_hook(&command, &env, dir.path()).unwrap();
+
+        let content = std::fs::read_to_string(&output_file).unwrap();
+        assert!(content.contains("KABU_WORKTREE_PATH=/path/to/worktree"));
+        assert!(content.contains("KABU_WORKTREE_NAME=my-feature"));
+        assert!(content.contains("KABU_BRANCH=feature/test"));
+        assert!(content.contains("KABU_REPO_ROOT=/path/to/repo"));
+        assert!(content.contains("KABU_VCS_TYPE=git"));
+        assert!(content.contains("KABU_CHANGE_ID=\n"));
+        assert!(content.contains("KABU_COMMIT_ID=\n"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_execute_hook_sets_env_variables_jj() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = HookEnv {
+            worktree_path: "/path/to/workspace".to_string(),
+            worktree_name: "my-workspace".to_string(),
+            branch: None,
+            repo_root: "/path/to/repo".to_string(),
+            vcs_type: "jj".to_string(),
+            change_id: Some("abc123".to_string()),
+            commit_id: Some("def456".to_string()),
+            hook_shell: None,
+        };
+
+        let output_file = dir.path().join("env_output.txt");
+
+        let command = format!(
+            concat!(
+                "echo \"KABU_WORKTREE_PATH=$KABU_WORKTREE_PATH\" > {0} && ",
+                "echo \"KABU_WORKTREE_NAME=$KABU_WORKTREE_NAME\" >> {0} && ",
+                "echo \"KABU_BRANCH=$KABU_BRANCH\" >> {0} && ",
+                "echo \"KABU_VCS_TYPE=$KABU_VCS_TYPE\" >> {0} && ",
+                "echo \"KABU_CHANGE_ID=$KABU_CHANGE_ID\" >> {0} && ",
+                "echo \"KABU_COMMIT_ID=$KABU_COMMIT_ID\" >> {0}",
+            ),
+            output_file.display()
+        );
+
+        execute_hook(&command, &env, dir.path()).unwrap();
+
+        let content = std::fs::read_to_string(&output_file).unwrap();
+        assert!(content.contains("KABU_WORKTREE_PATH=/path/to/workspace"));
+        assert!(content.contains("KABU_WORKTREE_NAME=my-workspace"));
+        assert!(content.contains("KABU_BRANCH=\n"));
+        assert!(content.contains("KABU_VCS_TYPE=jj"));
+        assert!(content.contains("KABU_CHANGE_ID=abc123"));
+        assert!(content.contains("KABU_COMMIT_ID=def456"));
     }
 }
