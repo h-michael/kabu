@@ -289,13 +289,17 @@ worktree:
 
 ### Glob patterns
 
-Use glob patterns in `link` operations to match multiple files:
+Use glob patterns in `link` and `copy` operations to match multiple files:
 
 ```yaml
 link:
   - source: fixtures/*
     ignore_tracked: true
     description: Link untracked test fixtures
+
+copy:
+  - source: test/fixtures/*
+    description: Copy test fixtures
 ```
 
 **Supported patterns:**
@@ -304,7 +308,7 @@ link:
 - `[...]` - matches character ranges
 - `**` - matches directories recursively
 
-**Options:**
+**Options (link only):**
 - `ignore_tracked: true` - Skip git-tracked files (useful for linking only untracked files like local configs or test data)
 
 **Examples:** [examples/glob-patterns.yaml](examples/glob-patterns.yaml)

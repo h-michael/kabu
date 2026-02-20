@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
-# Glob pattern examples for link operations
-# Link multiple files at once using glob patterns
+# Glob pattern examples for link and copy operations
+# Match multiple files at once using glob patterns
 
 # Why use glob patterns?
 #
@@ -60,12 +60,21 @@ link:
     ignore_tracked: true
     description: Link JSON fixtures
 
+copy:
+  # Example 7: Copy all files in a directory into worktree
+  - source: test/fixtures/*
+    description: Copy test fixtures
+
+  # Example 8: Copy all JSON fixtures (creates actual files, not symlinks)
+  - source: test/fixtures/*.json
+    description: Copy JSON test fixtures
+
 # Supported glob syntax:
 #   *       - matches any number of characters
 #   ?       - matches a single character
 #   [...]   - matches any character in the brackets
 #   **      - matches zero or more directories (recursive)
 #
-# Note: ignore_tracked option is useful when you want to:
+# Note: ignore_tracked option (link only) is useful when you want to:
 # - Link only untracked files (e.g., local configs, test data)
 # - Keep git status clean by not linking git-tracked files
