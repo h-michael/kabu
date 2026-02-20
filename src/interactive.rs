@@ -590,8 +590,24 @@ fn draw_help_modal(frame: &mut ratatui::Frame<'_>, theme: UiTheme) {
             Span::raw("Move cursor"),
         ]),
         Line::from(vec![
+            Span::styled("  [Home/Ctrl+A]  ", theme.accent_style()),
+            Span::raw("Move to line start"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [End/Ctrl+E]   ", theme.accent_style()),
+            Span::raw("Move to line end"),
+        ]),
+        Line::from(vec![
             Span::styled("  [Ctrl+U]       ", theme.accent_style()),
             Span::raw("Clear line"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Ctrl+K]       ", theme.accent_style()),
+            Span::raw("Delete to end of line"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Ctrl+W]       ", theme.accent_style()),
+            Span::raw("Delete word backward"),
         ]),
         Line::from(vec![
             Span::styled("  type           ", theme.accent_style()),
