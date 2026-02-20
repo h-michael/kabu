@@ -105,6 +105,10 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         }
     }
     for copy in &config.copy {
+        // Skip validation for glob patterns - they will be expanded later
+        if contains_glob_pattern(&copy.source) {
+            continue;
+        }
         let source = repo_root.join(&copy.source);
         if !source.exists() {
             return Err(Error::SourceNotFound {
@@ -408,16 +412,21 @@ fn run_setup(
         }
     }
 
-    // Process copies
+    // Process copies (expand glob patterns first)
     for copy in &config.copy {
-        let params = OperationParams {
-            source: &repo_root.join(&copy.source),
-            target: &worktree_path.join(&copy.target),
-            op_type: FileOp::Copy,
-            config_mode: copy.on_conflict.or(config.on_conflict),
-            description: copy.description.as_deref(),
-        };
-        process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
+        let expanded_copies = expand_copy(copy, repo_root)?;
+        for expanded_copy in expanded_copies {
+            let source = repo_root.join(&expanded_copy.source);
+            let target = worktree_path.join(&expanded_copy.target);
+            let params = OperationParams {
+                source: &source,
+                target: &target,
+                op_type: FileOp::Copy,
+                config_mode: expanded_copy.on_conflict.or(config.on_conflict),
+                description: expanded_copy.description.as_deref(),
+            };
+            process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
+        }
     }
 
     Ok(())
@@ -598,6 +607,66 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
         file_link.target = rel_path.to_path_buf();
         file_link.ignore_tracked = false; // Already filtered, no need to check again
         results.push(file_link);
+    }
+
+    Ok(results)
+}
+
+/// Expand a copy entry with glob patterns into multiple concrete copy entries.
+fn expand_copy(copy: &config::Copy, repo_root: &Path) -> Result<Vec<config::Copy>> {
+    let source_str = copy.source.to_string_lossy();
+
+    if !contains_glob_pattern(&copy.source) {
+        return Ok(vec![copy.clone()]);
+    }
+
+    let glob = globset::GlobBuilder::new(&source_str)
+        .literal_separator(true)
+        .build()
+        .map_err(|e| Error::ConfigValidation {
+            message: format!("Invalid glob pattern '{}': {}", source_str, e),
+        })?;
+    let matcher = glob.compile_matcher();
+
+    let mut matched_dirs: HashSet<PathBuf> = HashSet::new();
+    let mut results = Vec::new();
+
+    for entry in walkdir::WalkDir::new(repo_root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| e.file_name() != ".git")
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        let rel_path = match path.strip_prefix(repo_root) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        // Skip if parent directory was already matched
+        let mut should_skip = false;
+        for matched_dir in &matched_dirs {
+            if rel_path.starts_with(matched_dir) && rel_path != matched_dir {
+                should_skip = true;
+                break;
+            }
+        }
+        if should_skip {
+            continue;
+        }
+
+        if !matcher.is_match(rel_path) {
+            continue;
+        }
+
+        if path.is_dir() {
+            matched_dirs.insert(rel_path.to_path_buf());
+        }
+
+        let mut file_copy = copy.clone();
+        file_copy.source = rel_path.to_path_buf();
+        file_copy.target = rel_path.to_path_buf();
+        results.push(file_copy);
     }
 
     Ok(results)
@@ -821,6 +890,104 @@ mod impure_tests {
         assert_eq!(result.len(), 2);
 
         let mut sources: Vec<_> = result.iter().map(|l| l.source.clone()).collect();
+        sources.sort();
+        assert_eq!(sources[0], PathBuf::from("dir1"));
+        assert_eq!(sources[1], PathBuf::from("dir2"));
+    }
+
+    #[test]
+    fn test_expand_copy_no_glob() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let repo_root = temp_dir.path();
+
+        std::fs::write(repo_root.join("test.txt"), "content").unwrap();
+
+        let copy = config::Copy {
+            source: PathBuf::from("test.txt"),
+            target: PathBuf::from("test.txt"),
+            on_conflict: None,
+            description: None,
+        };
+
+        let result = expand_copy(&copy, repo_root).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source, PathBuf::from("test.txt"));
+    }
+
+    #[test]
+    fn test_expand_copy_with_glob() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let repo_root = temp_dir.path();
+
+        std::fs::create_dir_all(repo_root.join("fixtures")).unwrap();
+        std::fs::write(repo_root.join("fixtures/file1.txt"), "content1").unwrap();
+        std::fs::write(repo_root.join("fixtures/file2.txt"), "content2").unwrap();
+        std::fs::write(repo_root.join("fixtures/data.json"), "{}").unwrap();
+
+        let copy = config::Copy {
+            source: PathBuf::from("fixtures/*.txt"),
+            target: PathBuf::from("fixtures/*.txt"),
+            on_conflict: None,
+            description: None,
+        };
+
+        let result = expand_copy(&copy, repo_root).unwrap();
+        assert_eq!(result.len(), 2);
+
+        let mut sources: Vec<_> = result.iter().map(|c| c.source.clone()).collect();
+        sources.sort();
+        assert_eq!(sources[0], PathBuf::from("fixtures/file1.txt"));
+        assert_eq!(sources[1], PathBuf::from("fixtures/file2.txt"));
+    }
+
+    #[test]
+    fn test_expand_copy_with_directory() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let repo_root = temp_dir.path();
+
+        std::fs::create_dir_all(repo_root.join("testdir")).unwrap();
+        std::fs::write(repo_root.join("testdir/file1.txt"), "content1").unwrap();
+        std::fs::write(repo_root.join("testdir/file2.txt"), "content2").unwrap();
+
+        let copy = config::Copy {
+            source: PathBuf::from("testdir"),
+            target: PathBuf::from("testdir"),
+            on_conflict: None,
+            description: None,
+        };
+
+        let result = expand_copy(&copy, repo_root).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source, PathBuf::from("testdir"));
+    }
+
+    #[test]
+    fn test_expand_copy_with_glob_matching_directory() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let repo_root = temp_dir.path();
+
+        std::fs::create_dir_all(repo_root.join("dir1")).unwrap();
+        std::fs::write(repo_root.join("dir1/file.txt"), "content1").unwrap();
+        std::fs::create_dir_all(repo_root.join("dir2")).unwrap();
+        std::fs::write(repo_root.join("dir2/file.txt"), "content2").unwrap();
+        std::fs::create_dir_all(repo_root.join("other")).unwrap();
+        std::fs::write(repo_root.join("other/file.txt"), "content3").unwrap();
+
+        let copy = config::Copy {
+            source: PathBuf::from("dir*"),
+            target: PathBuf::from("dir*"),
+            on_conflict: None,
+            description: None,
+        };
+
+        let result = expand_copy(&copy, repo_root).unwrap();
+        assert_eq!(result.len(), 2);
+
+        let mut sources: Vec<_> = result.iter().map(|c| c.source.clone()).collect();
         sources.sort();
         assert_eq!(sources[0], PathBuf::from("dir1"));
         assert_eq!(sources[1], PathBuf::from("dir2"));
