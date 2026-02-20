@@ -234,6 +234,39 @@ impl TextInputState {
         self.cursor = 0;
     }
 
+    fn move_to_start(&mut self) {
+        self.cursor = 0;
+    }
+
+    fn move_to_end(&mut self) {
+        self.cursor = self.value.chars().count();
+    }
+
+    fn kill_to_end(&mut self) {
+        let idx = self.byte_index(self.cursor);
+        self.value.truncate(idx);
+    }
+
+    fn delete_word_backward(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let chars: Vec<char> = self.value.chars().collect();
+        let mut pos = self.cursor;
+        // Skip leading whitespace before cursor
+        while pos > 0 && chars[pos - 1] == ' ' {
+            pos -= 1;
+        }
+        // Skip word characters
+        while pos > 0 && chars[pos - 1] != ' ' {
+            pos -= 1;
+        }
+        let start_byte = self.byte_index(pos);
+        let end_byte = self.byte_index(self.cursor);
+        self.value.drain(start_byte..end_byte);
+        self.cursor = pos;
+    }
+
     fn byte_index(&self, char_index: usize) -> usize {
         if char_index == 0 {
             return 0;
@@ -722,6 +755,8 @@ fn handle_commit_input_event(
             filter_branch_rows(state);
             state.step = AddStep::Branch;
         }
+        KeyCode::Home => state.commit_input.move_to_start(),
+        KeyCode::End => state.commit_input.move_to_end(),
         KeyCode::Left => state.commit_input.move_left(),
         KeyCode::Right => state.commit_input.move_right(),
         KeyCode::Backspace => {
@@ -736,9 +771,22 @@ fn handle_commit_input_event(
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
-                if c == 'u' {
-                    state.commit_input.clear();
-                    state.commit_error = None;
+                match c {
+                    'u' => {
+                        state.commit_input.clear();
+                        state.commit_error = None;
+                    }
+                    'a' => state.commit_input.move_to_start(),
+                    'e' => state.commit_input.move_to_end(),
+                    'k' => {
+                        state.commit_input.kill_to_end();
+                        state.commit_error = None;
+                    }
+                    'w' => {
+                        state.commit_input.delete_word_backward();
+                        state.commit_error = None;
+                    }
+                    _ => {}
                 }
             } else {
                 state.commit_input.insert_char(c);
@@ -771,6 +819,8 @@ fn handle_branch_name_event(
                 None => AddStep::Branch,
             }
         }
+        KeyCode::Home => state.branch_name_input.move_to_start(),
+        KeyCode::End => state.branch_name_input.move_to_end(),
         KeyCode::Left => state.branch_name_input.move_left(),
         KeyCode::Right => state.branch_name_input.move_right(),
         KeyCode::Backspace => {
@@ -786,9 +836,22 @@ fn handle_branch_name_event(
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
-                if c == 'u' {
-                    state.branch_name_input.clear();
-                    update_branch_name_validation(state, input);
+                match c {
+                    'u' => {
+                        state.branch_name_input.clear();
+                        update_branch_name_validation(state, input);
+                    }
+                    'a' => state.branch_name_input.move_to_start(),
+                    'e' => state.branch_name_input.move_to_end(),
+                    'k' => {
+                        state.branch_name_input.kill_to_end();
+                        update_branch_name_validation(state, input);
+                    }
+                    'w' => {
+                        state.branch_name_input.delete_word_backward();
+                        update_branch_name_validation(state, input);
+                    }
+                    _ => {}
                 }
             } else {
                 state.branch_name_input.insert_char(c);
@@ -816,6 +879,8 @@ fn handle_path_event(
                 AddStep::Branch
             }
         }
+        KeyCode::Home => state.path_input.move_to_start(),
+        KeyCode::End => state.path_input.move_to_end(),
         KeyCode::Left => state.path_input.move_left(),
         KeyCode::Right => state.path_input.move_right(),
         KeyCode::Backspace => state.path_input.backspace(),
@@ -830,8 +895,13 @@ fn handle_path_event(
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
-                if c == 'u' {
-                    state.path_input.clear();
+                match c {
+                    'u' => state.path_input.clear(),
+                    'a' => state.path_input.move_to_start(),
+                    'e' => state.path_input.move_to_end(),
+                    'k' => state.path_input.kill_to_end(),
+                    'w' => state.path_input.delete_word_backward(),
+                    _ => {}
                 }
             } else {
                 state.path_input.insert_char(c);
@@ -2909,5 +2979,68 @@ mod tests {
         assert_eq!(state.step, AddStep::Branch);
         assert_eq!(state.branch_name_input.value, "");
         assert!(state.branch_name_error.is_none());
+    }
+
+    fn make_input(value: &str, cursor: usize) -> TextInputState {
+        TextInputState {
+            value: value.to_string(),
+            cursor,
+        }
+    }
+
+    #[test]
+    fn test_move_to_start() {
+        let mut s = make_input("hello", 3);
+        s.move_to_start();
+        assert_eq!(s.cursor, 0);
+        assert_eq!(s.value, "hello");
+    }
+
+    #[test]
+    fn test_move_to_end() {
+        let mut s = make_input("hello", 2);
+        s.move_to_end();
+        assert_eq!(s.cursor, 5);
+        assert_eq!(s.value, "hello");
+    }
+
+    #[test]
+    fn test_kill_to_end_mid() {
+        let mut s = make_input("hello world", 5);
+        s.kill_to_end();
+        assert_eq!(s.value, "hello");
+        assert_eq!(s.cursor, 5);
+    }
+
+    #[test]
+    fn test_kill_to_end_at_end() {
+        let mut s = make_input("hello", 5);
+        s.kill_to_end();
+        assert_eq!(s.value, "hello");
+        assert_eq!(s.cursor, 5);
+    }
+
+    #[test]
+    fn test_delete_word_backward_simple() {
+        let mut s = make_input("foo bar", 7);
+        s.delete_word_backward();
+        assert_eq!(s.value, "foo ");
+        assert_eq!(s.cursor, 4);
+    }
+
+    #[test]
+    fn test_delete_word_backward_trailing_space() {
+        let mut s = make_input("foo bar  ", 9);
+        s.delete_word_backward();
+        assert_eq!(s.value, "foo ");
+        assert_eq!(s.cursor, 4);
+    }
+
+    #[test]
+    fn test_delete_word_backward_at_start() {
+        let mut s = make_input("foo", 0);
+        s.delete_word_backward();
+        assert_eq!(s.value, "foo");
+        assert_eq!(s.cursor, 0);
     }
 }
