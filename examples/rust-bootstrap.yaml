@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
+
+# When to use: Rust repositories with shared local cargo settings.
+# Run: kabu trust && kabu add ../wt-rust -b wt-rust
+# Expected effect: Links local cargo config and runs a quick check.
+# Pitfall: Avoid expensive hooks unless every new worktree needs them.
+
+on_conflict: skip
+
+mkdir:
+  - path: .cargo
+    description: Cargo config directory
+
+link:
+  - source: .cargo/config.toml
+    description: Local cargo config
+
+hooks:
+  post_add:
+    - command: cargo check
+      description: Validate compile state

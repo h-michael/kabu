@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
+
+# When to use: Standard per-worktree local setup.
+# Run: kabu add ../wt-basic -b wt-basic
+# Expected effect: Creates directories, links local files, and copies templates.
+# Pitfall: `source` paths are relative to repository root.
+
+on_conflict: backup
+
+mkdir:
+  - path: build
+    description: Build output directory
+
+  - path: logs
+    description: Log directory
+
+link:
+  - source: .env.local
+    description: Local environment file
+
+  - source: .envrc
+    description: direnv file
+
+copy:
+  - source: .env.example
+    target: .env
+    description: Local env template

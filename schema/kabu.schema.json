@@ -211,10 +211,6 @@
             "null"
           ]
         },
-        "ignore_tracked": {
-          "type": "boolean",
-          "default": false
-        },
         "on_conflict": {
           "anyOf": [
             {
@@ -224,6 +220,10 @@
               "type": "null"
             }
           ]
+        },
+        "skip_tracked": {
+          "type": "boolean",
+          "default": false
         },
         "source": {
           "type": "string",
@@ -273,7 +273,7 @@
       "type": "object",
       "properties": {
         "add_default_mode": {
-          "description": "Default mode for interactive add: existing or new (default: existing)",
+          "description": "Default mode for interactive add: existing or new (default: new)",
           "anyOf": [
             {
               "$ref": "#/$defs/AddDefaultMode"

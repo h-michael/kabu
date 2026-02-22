@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
+
+# When to use: Link many local-only files without polluting git status.
+# Run: kabu add ../wt-glob -b wt-glob
+# Expected effect: Links matched files; tracked files can be skipped.
+# Pitfall: Broad patterns like `.*` may include unexpected files.
+
+link:
+  - source: fixtures/*
+    skip_tracked: true
+    description: Link local fixtures only
+
+  - source: '**/*.local'
+    description: Link .local files recursively
+
+  - source: config/*.json
+    description: Link JSON config files

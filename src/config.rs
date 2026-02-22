@@ -205,9 +205,7 @@ struct RawUi {
     colors: RawUiColors,
     #[schemars(description = "Show key hints in the UI footer (default: true)")]
     show_key_hints: Option<bool>,
-    #[schemars(
-        description = "Default mode for interactive add: existing or new (default: existing)"
-    )]
+    #[schemars(description = "Default mode for interactive add: existing or new (default: new)")]
     add_default_mode: Option<AddDefaultMode>,
 }
 
@@ -343,7 +341,7 @@ struct RawLink {
     on_conflict: Option<OnConflict>,
     description: Option<String>,
     #[serde(default)]
-    ignore_tracked: bool,
+    skip_tracked: bool,
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
@@ -488,7 +486,7 @@ impl TryFrom<RawConfig> for Config {
                 target,
                 on_conflict: raw_link.on_conflict,
                 description: raw_link.description,
-                ignore_tracked: raw_link.ignore_tracked,
+                skip_tracked: raw_link.skip_tracked,
             });
         }
 
@@ -1138,7 +1136,7 @@ pub(crate) struct Link {
     pub target: PathBuf, // Always resolved (no Option)
     pub on_conflict: Option<OnConflict>,
     pub description: Option<String>,
-    pub ignore_tracked: bool,
+    pub skip_tracked: bool,
 }
 
 /// File copy configuration entry.
@@ -1214,7 +1212,7 @@ pub(crate) struct LinkSnapshot {
     pub target: String,
     pub on_conflict: Option<OnConflict>,
     pub description: Option<String>,
-    pub ignore_tracked: bool,
+    pub skip_tracked: bool,
 }
 
 /// Copy operation snapshot.
@@ -1252,7 +1250,7 @@ impl ConfigSnapshot {
                     target: l.target.to_string_lossy().to_string(),
                     on_conflict: l.on_conflict,
                     description: l.description.clone(),
-                    ignore_tracked: l.ignore_tracked,
+                    skip_tracked: l.skip_tracked,
                 })
                 .collect(),
             copy: config

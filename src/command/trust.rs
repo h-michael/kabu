@@ -490,10 +490,7 @@ fn display_config_diff(old: &ConfigSnapshot, new: &config::Config, use_color: bo
             if let Some(desc) = &item.description {
                 println!("    {} description: {}", removed_prefix, desc);
             }
-            println!(
-                "    {} ignore_tracked: {}",
-                removed_prefix, item.ignore_tracked
-            );
+            println!("    {} skip_tracked: {}", removed_prefix, item.skip_tracked);
         }
 
         for item in added {
@@ -509,10 +506,7 @@ fn display_config_diff(old: &ConfigSnapshot, new: &config::Config, use_color: bo
             if let Some(desc) = &item.description {
                 println!("    {} description: {}", added_prefix, desc);
             }
-            println!(
-                "    {} ignore_tracked: {}",
-                added_prefix, item.ignore_tracked
-            );
+            println!("    {} skip_tracked: {}", added_prefix, item.skip_tracked);
         }
 
         if order_changed {
