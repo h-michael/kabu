@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
+
+# When to use: Run setup/cleanup commands around add/remove.
+# Run: kabu trust && kabu add ../wt-hooks -b wt-hooks
+# Expected effect: Trusted hooks run in order at each lifecycle stage.
+# Pitfall: Hooks do not run until trusted. Re-trust after hook changes.
+
+hooks:
+  pre_add:
+    - command: echo 'Preparing {{worktree_name}}'
+
+  post_add:
+    - command: ./scripts/post-setup.sh {{worktree_path}}
+      description: Run post setup script
+
+  pre_remove:
+    - command: ./scripts/pre-cleanup.sh {{worktree_path}}
+      description: Run pre cleanup script
+
+  post_remove:
+    - command: echo 'Removed {{worktree_name}}'
+
+# Template variables are shell-escaped:
+#   {{worktree_path}}, {{worktree_name}}, {{branch}}, {{repo_root}}
+# Environment variables are raw values:
+#   KABU_WORKTREE_PATH, KABU_WORKTREE_NAME, KABU_BRANCH, KABU_REPO_ROOT,
+#   KABU_VCS_TYPE, KABU_CHANGE_ID, KABU_COMMIT_ID

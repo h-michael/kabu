@@ -1,43 +1,28 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
-# mise and direnv integration example
-# Automatically set up development tools and environment
+# When to use: Projects using mise + direnv for tool and env setup.
+# Run: kabu trust && kabu add ../wt-mise -b wt-mise
+# Expected effect: Links env files, copies template, installs tools.
+# Pitfall: `direnv allow` trusts the target directory's `.envrc`.
 
 on_conflict: skip
 
-# Link direnv configuration
 link:
   - source: .envrc
-    description: direnv configuration
+    description: direnv config
 
   - source: .env.local
-    description: Local environment variables
+    description: Local env values
 
-# Copy template files
 copy:
   - source: .env.example
     target: .env
     description: Environment template
 
-# Install mise tools after worktree creation
 hooks:
   post_add:
     - command: mise install
       description: Install tools via mise
 
-    # Trust direnv configuration
     - command: direnv allow
-      description: Trust direnv configuration
-
-    # Optional: Run mise tasks
-    # - command: mise run setup
-    #   description: Run mise setup tasks
-
-    # Alternative: Using asdf instead of mise
-    # - command: asdf install
-    #   description: Install tools via asdf
-
-# Clean up before removing worktree
-# pre_remove:
-#   - command: direnv revoke
-#     description: Revoke direnv trust
+      description: Trust direnv config

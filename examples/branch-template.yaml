@@ -1,41 +1,15 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
-# Branch template configuration examples
-# Used in interactive mode (-i) to suggest branch names when creating new branches
+# When to use: Suggest branch names in interactive add mode.
+# Run: kabu add -i
+# Expected effect: New-branch input is pre-filled from `branch_template`.
+# Pitfall: `branch_template` supports {{commitish}}, {{repository}}, {{strftime(...)}}.
 
 worktree:
   path_template: ../worktrees/{{branch}}
-  branch_template: review/{{commitish}}
+  branch_template: review/{{strftime(%Y-%m-%d)}}/{{commitish}}
 
-# Example 1: Simple prefix
+# More examples:
 # branch_template: review/{{commitish}}
-# When creating from "feature/auth" -> Suggested branch name: "review/feature/auth"
-
-# Example 2: With date
-# branch_template: review/{{strftime(%Y-%m-%d)}}/{{commitish}}
-# When creating from "feature/auth" -> Suggested: "review/2025-01-14/feature/auth"
-
-# Example 3: With repo name
 # branch_template: {{repository}}/review/{{commitish}}
-# When creating from "feature/auth" in repo "myapp" -> Suggested: "myapp/review/feature/auth"
-
-# Example 4: Date only format
 # branch_template: hotfix/{{strftime(%m%d)}}-{{commitish}}
-# When creating from "fix-bug" -> Suggested: "hotfix/0114-fix-bug"
-
-# Available variables:
-#   {{commitish}} - The commit-ish to create from (branch name, tag, commit hash, etc.)
-#   {{repository}} - Repository directory name
-#   {{strftime(FORMAT)}} - Current date/time formatted with strftime
-#
-# Common strftime formats:
-#   %Y-%m-%d  -> 2025-01-14
-#   %m-%d     -> 01-14
-#   %Y%m%d    -> 20250114
-#   %H:%M     -> 15:30
-#   %Y/%m/%d  -> 2025/01/14
-#   %b-%d     -> Jan-14
-
-# Note: The branch template is only used in interactive mode (kabu add -i)
-# when creating a new branch. It provides a suggested name that you can
-# accept or modify.

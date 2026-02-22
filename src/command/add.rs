@@ -527,7 +527,7 @@ fn contains_glob_pattern(path: &Path) -> bool {
 }
 
 /// Expand a link entry with glob patterns into multiple concrete link entries.
-/// If ignore_tracked is true, filter out VCS-tracked files.
+/// If skip_tracked is true, filter out VCS-tracked files.
 fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Result<Vec<Link>> {
     let source_str = link.source.to_string_lossy();
 
@@ -546,7 +546,7 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
     let matcher = glob.compile_matcher();
 
     // Get VCS-tracked files if needed
-    let tracked_files: HashSet<PathBuf> = if link.ignore_tracked {
+    let tracked_files: HashSet<PathBuf> = if link.skip_tracked {
         provider
             .list_tracked_files(repo_root)?
             .into_iter()
@@ -591,8 +591,8 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
             continue;
         }
 
-        // Skip if it's tracked and ignore_tracked is true
-        if link.ignore_tracked && tracked_files.contains(rel_path) {
+        // Skip if it's tracked and skip_tracked is true
+        if link.skip_tracked && tracked_files.contains(rel_path) {
             continue;
         }
 
@@ -605,7 +605,7 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
         let mut file_link = link.clone();
         file_link.source = rel_path.to_path_buf();
         file_link.target = rel_path.to_path_buf();
-        file_link.ignore_tracked = false; // Already filtered, no need to check again
+        file_link.skip_tracked = false; // Already filtered, no need to check again
         results.push(file_link);
     }
 
@@ -715,7 +715,7 @@ mod impure_tests {
             target: PathBuf::from("test.txt"),
             on_conflict: None,
             description: None,
-            ignore_tracked: false,
+            skip_tracked: false,
         };
 
         let provider = vcs::GitProvider;
@@ -741,7 +741,7 @@ mod impure_tests {
             target: PathBuf::from("fixtures/*.txt"),
             on_conflict: None,
             description: None,
-            ignore_tracked: false,
+            skip_tracked: false,
         };
 
         let provider = vcs::GitProvider;
@@ -755,7 +755,7 @@ mod impure_tests {
     }
 
     #[test]
-    fn test_expand_link_ignore_tracked() {
+    fn test_expand_link_skip_tracked() {
         use tempfile::TempDir;
         let temp_dir = TempDir::new().unwrap();
         let repo_root = temp_dir.path();
@@ -814,7 +814,7 @@ mod impure_tests {
             target: PathBuf::from("fixtures/*.txt"),
             on_conflict: None,
             description: None,
-            ignore_tracked: true,
+            skip_tracked: true,
         };
 
         let provider = vcs::GitProvider;
@@ -849,7 +849,7 @@ mod impure_tests {
             target: PathBuf::from("testdir"),
             on_conflict: None,
             description: None,
-            ignore_tracked: false,
+            skip_tracked: false,
         };
 
         let provider = vcs::GitProvider;
@@ -880,7 +880,7 @@ mod impure_tests {
             target: PathBuf::from("dir*"),
             on_conflict: None,
             description: None,
-            ignore_tracked: false,
+            skip_tracked: false,
         };
 
         let provider = vcs::GitProvider;

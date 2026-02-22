@@ -1,38 +1,18 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
-# Coding agent integration example
-# Share uncommitted personal coding agent settings across worktrees
-#
-# This is useful for:
-# - Keeping project-specific instructions and guidelines in sync
-# - Sharing personal development configurations across all worktrees
-# - Maintaining consistent AI tool behavior without committing to git
-#
-# Note: These files/directories are typically gitignored via global git config (~/.config/git/ignore)
+# When to use: Share personal coding-agent settings across worktrees.
+# Run: kabu add ../wt-agent -b wt-agent
+# Expected effect: Agent config files are reused via symlink.
+# Pitfall: Link only files that are intentionally untracked or local-only.
 
 on_conflict: skip
 
-# Claude Code (CLI)
-# Link .claude/ directory (project-specific Claude Code instructions)
 link:
   - source: .claude
-    description: Share Claude Code project instructions
+    description: Claude Code settings
 
-  # Alternative: Link only CLAUDE.md
-  # - source: .claude/CLAUDE.md
-  #   description: Share main project instructions
-
-  # OpenAI Codex CLI
-  # Link AGENTS.md file (project-specific instructions for Codex)
-  # Note: AGENTS.md is often committed to git, so check if linking is appropriate
-  # - source: AGENTS.md
-  #   description: Share Codex project instructions
-
-  # Cursor (Editor)
-  # Link .cursorrules file (legacy format, still supported but deprecated)
-  - source: .cursorrules
-    description: Share Cursor rules (legacy)
-
-  # Link .cursor/rules directory (recommended new format with per-path rules)
   - source: .cursor/rules
-    description: Share Cursor project rules
+    description: Cursor rules directory
+
+  - source: .cursorrules
+    description: Legacy Cursor rules

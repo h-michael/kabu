@@ -9,67 +9,30 @@ use clap_complete::Shell;
 #[command(about = "Enhance git worktree and jj workspace with automated setup")]
 #[command(version = VERSION_STRING)]
 #[command(after_help = "\
-VCS SUPPORT:
-    kabu automatically detects and supports:
-    - Git repositories (uses git worktree commands)
-    - jj (Jujutsu) repositories (uses jj workspace commands)
-    - Colocated repositories (jj on top of git)
+QUICK EXAMPLES:
+    kabu add ../new-worktree
+    kabu list
+    kabu remove ../new-worktree
+    kabu config validate
 
-CONFIGURATION:
-    kabu reads .kabu/config.yaml or .kabu/config.toml from the repository root.
-    Both formats are supported; YAML takes priority if both exist.
+WHAT THIS COMMAND DOES:
+    - Detects git/jj automatically
+    - Runs selected subcommand
+    - Uses .kabu/config.yaml or .kabu/config.toml (YAML wins)
 
-COLOR OUTPUT:
-    kabu uses colored output for better readability. Control with:
+DISCOVERY MAP:
+    - Worktree/workspace lifecycle: kabu add, kabu list, kabu remove
+    - Shell navigation and integration: kabu path, kabu cd, kabu init, kabu completions
+    - Configuration and schema: kabu config, kabu config schema
+    - Hook trust management: kabu trust, kabu untrust
 
-    --color=always    Always use colors (useful when piping: kabu list --color=always | less -R)
-    --color=never     Never use colors (or use --no-color)
-    --color=auto      Auto-detect terminal (default)
+SAFETY NOTES:
+    - hooks do not run until trusted (kabu trust)
+    - remove warns before risky deletion unless --force is used
 
-    Environment:
-    NO_COLOR          When set to non-empty value, disables colors (https://no-color.org/)
-
-    Priority: --color flag > NO_COLOR env > terminal detection
-
-EXAMPLES:
-    kabu add ../new-worktree-path
-        Create worktree and run setup from config file
-
-    kabu add -b new-branch-name ../new-worktree-path
-        Create new branch and worktree with setup
-
-    kabu add --i
-        Select branch and path interactively
-
-    kabu add --dry-run ../test
-        Preview what would be done without executing
-
-    kabu add --no-setup ../quick
-        Create worktree without running setup
-
-    kabu remove ../worktree-path
-        Remove worktree with safety checks
-
-    kabu remove --i
-        Select worktrees to remove interactively
-
-    kabu remove --dry-run ../test
-        Preview what would be removed without executing
-
-    kabu trust
-        Trust hooks in config file (required for hook execution)
-
-    kabu untrust --list
-        List all trusted repositories
-
-    kabu cd
-        Select a worktree and cd to it (requires shell integration)
-
-    cd \"$(kabu path)\"
-        Select a worktree and print its path (works without shell integration)
-
-    eval \"$(kabu init bash)\"
-        Enable shell completions and trust warnings")]
+SEE ALSO:
+    kabu <command> --help
+    kabu man")]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -122,101 +85,80 @@ pub(crate) enum Command {
 /// Arguments for the `config` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-CONFIG FORMAT:
-    defaults:
-      on_conflict: backup    # Optional, see CONFLICT MODES below
+QUICK EXAMPLES:
+    kabu config new
+    kabu config validate
+    kabu config get auto_cd.after_remove
+    kabu config schema > schema.json
 
+WHAT THIS COMMAND DOES:
+    - Creates, validates, and inspects .kabu config files
+    - Supports YAML and TOML (YAML has higher priority)
+    - Validates strict keys (unknown keys fail)
+
+CONFIG KEYS (TOP LEVEL):
+    on_conflict: abort | skip | overwrite | backup
+    auto_cd:
+      after_add: true | false
+      after_remove: main | select
+    worktree:
+      path_template: string
+      branch_template: string
     mkdir:
-      - path: build          # Required, relative to worktree
-        description: ...     # Optional
-
+      - path: string
+        description: string (optional)
     link:
-      - source: .env.local   # Required, relative to repo root (supports glob patterns)
-        target: .env.local   # Optional, defaults to source
-        on_conflict: skip    # Optional, overrides global
-        description: ...     # Optional
-
-      - source: .envrc
-        description: ...
-
-      - source: fixtures/*   # Glob pattern support
-        ignore_tracked: true # Optional, skip git-tracked files (for glob patterns)
-        description: ...
-
+      - source: string
+        target: string (optional; default = source)
+        skip_tracked: bool (optional; default = false)
+        on_conflict: abort | skip | overwrite | backup (optional)
+        description: string (optional)
     copy:
-      - source: .env.example # Required, relative to repo root
-        target: .env         # Optional, defaults to source
-        on_conflict: backup  # Optional, overrides global
-        description: ...     # Optional
-
+      - source: string
+        target: string (optional; default = source)
+        on_conflict: abort | skip | overwrite | backup (optional)
+        description: string (optional)
     hooks:
-      pre_add:
-        - command: echo 'Setting up {{worktree_name}}'
+      hook_shell: string (optional)
+      pre_add/post_add/pre_remove/post_remove:
+        - command: string (required)
+          description: string (optional)
+    ui:
+      add_default_mode: existing | new
+      show_key_hints: bool
+      colors: accent/border/disabled/error/footer/header/label/muted/preview/
+              search/selection_bg/selection_fg/text/title/warning
 
-      post_add:
-        - command: npm install
-          description: Install dependencies  # Optional
+TEMPLATE VARIABLES:
+    worktree.path_template:
+      {{branch}}, {{repository}}
+    worktree.branch_template:
+      {{commitish}}, {{repository}}, {{strftime(...)}} (e.g. {{strftime(%Y%m%d)}})
+    hooks.command:
+      {{worktree_path}}, {{worktree_name}}, {{branch}}, {{repo_root}}, {{vcs_type}}
+      jj-specific: {{change_id}}, {{commit_id}}
+      aliases: {{workspace_path}}, {{workspace_name}}, {{bookmark}}
 
-      pre_remove:
-        - command: echo 'Cleaning up {{worktree_name}}'
+HOOK ENVIRONMENT VARIABLES:
+    KABU_WORKTREE_PATH, KABU_WORKTREE_NAME, KABU_BRANCH, KABU_REPO_ROOT,
+    KABU_VCS_TYPE, KABU_CHANGE_ID, KABU_COMMIT_ID
 
-      post_remove:
-        - command: ./scripts/cleanup.sh
-          description: Run cleanup script
+CONFLICT RESOLUTION PRIORITY:
+    CLI --on-conflict > per-entry on_conflict > top-level on_conflict > prompt/default behavior
 
-CONFLICT MODES:
-    abort      Stop immediately when a conflict is found
-    skip       Skip the conflicting file and continue
-    overwrite  Replace the existing file
-    backup     Rename existing file with .bak suffix before creating new one
+EXECUTION ORDER:
+    add:    pre_add -> VCS add -> mkdir -> link -> copy -> post_add
+    remove: pre_remove -> VCS remove -> post_remove
 
-    Default: prompt interactively (error if non-interactive, use --on-conflict)
+SAFETY NOTES:
+    - Hooks require trust before execution (kabu trust)
+    - Template placeholders use double braces: {{branch}}
+    - Paths in mkdir/link/copy must be relative; unknown keys fail validation
 
-GLOB PATTERNS:
-    link entries support glob patterns in the source field:
-        source: fixtures/*       Match all files in fixtures/
-        source: file?.txt        Match single character
-        source: file[0-9].txt    Match character ranges
-
-    With ignore_tracked: true, only git-ignored files are linked, while
-    git-tracked files (like .gitkeep) are skipped. This keeps git status clean.
-
-HOOKS:
-    Hooks run custom commands before/after worktree operations.
-    Require explicit trust via 'kabu trust' before execution.
-
-    Platform support: Unix-like systems (Linux, macOS) and Windows.
-    On Windows, hooks run via an auto-detected shell (pwsh, powershell,
-    Git Bash, or cmd). Override with --hook-shell or KABUHOOK_SHELL.
-
-    Format:
-        hooks:
-          pre_add:
-            - command: ...       # Required: shell command to execute
-              description: ...   # Optional: human-readable description
-
-    Execution order (kabu add):
-        1. pre_add (repo_root) → 2. git worktree add →
-        3. mkdir/link/copy → 4. post_add (worktree_path)
-
-    Execution order (kabu remove):
-        1. pre_remove (worktree_path) → 2. git worktree remove →
-        3. post_remove (repo_root)
-
-    Template variables (automatically shell-escaped):
-        {{worktree_path}}    Full path to the worktree
-        {{worktree_name}}    Worktree directory name
-        {{branch}}           Branch name
-        {{repo_root}}        Repository root path
-
-    Environment variables (raw, unescaped):
-        $KABU_WORKTREE_PATH  Full path to the worktree
-        $KABU_WORKTREE_NAME  Worktree directory name
-        $KABU_BRANCH         Branch name (empty if detached)
-        $KABU_REPO_ROOT      Repository root path
-        $KABU_VCS_TYPE       VCS type (\"git\" or \"jj\")
-        $KABU_CHANGE_ID      jj change ID (empty for git)
-        $KABU_COMMIT_ID      jj commit ID (empty for git)")]
+SEE ALSO:
+    kabu config <subcommand> --help
+    kabu trust --help
+    kabu man")]
 pub(crate) struct ConfigArgs {
     #[command(subcommand)]
     pub command: Option<ConfigCommand>,
@@ -289,38 +231,48 @@ pub(crate) enum ConfigCommand {
 /// Arguments for the `add` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-VCS SUPPORT:
-    Works with both git worktree and jj workspace:
-    - Git: Creates worktree using `git worktree add`
-    - jj:  Creates workspace using `jj workspace add`
-
-EXAMPLES:
-    kabu add ../new-worktree-path
-        Create worktree/workspace and run setup from config file
-
-    kabu add -b new-branch-name ../new-worktree-path
-        Create new branch (git) or bookmark (jj) with worktree/workspace
-
+QUICK EXAMPLES:
+    kabu add ../new-worktree
+    kabu add -b feature-x ../feature-x
     kabu add --interactive
-        Select branch and path interactively
+    kabu add --dry-run ../preview
 
-    kabu add --dry-run ../test
-        Preview what would be done without executing
+WHAT THIS COMMAND DOES:
+    - Creates a git worktree / jj workspace
+    - Runs setup in fixed order: mkdir -> link -> copy
+    - Can skip setup with --no-setup
 
-    kabu add --no-setup ../quick
-        Create worktree/workspace without running setup
+VCS MAPPING:
+    - git: git worktree add
+    - jj:  jj workspace add
+    - colocated (git+jj): jj workspace add is used
+
+ARGUMENT RULES:
+    - [PATH] is required unless --interactive, or path_template + branch (-b/-B/COMMITISH)
+    - [COMMITISH] is optional revision/branch input
+    - -b/-B creates or resets branch/bookmark depending on VCS
 
 CONFLICT MODES:
-    abort      Stop immediately when a conflict is found (default in non-interactive)
-    skip       Skip the conflicting file and continue
-    overwrite  Replace the existing file
-    backup     Rename existing file with .bak suffix before creating new one
+    abort      stop on first conflict
+    skip       keep existing target and continue
+    overwrite  replace existing target
+    backup     rename existing target with .bak then continue
 
 ENVIRONMENT VARIABLES:
-    KABU_ON_CONFLICT    Default conflict resolution mode (e.g., KABU_ON_CONFLICT=backup)
-    KABUHOOK_SHELL      Windows-only hook shell override (pwsh, powershell, bash, cmd, wsl)")]
+    KABU_ON_CONFLICT  default for --on-conflict
+    KABUHOOK_SHELL    shell override for hook execution
+
+SAFETY NOTES:
+    - --dry-run previews actions without changes
+    - --no-setup runs only VCS add
+    - hooks run only after trust (kabu trust)
+    - operation order is fixed and independent of YAML order
+
+SEE ALSO:
+    kabu remove --help
+    kabu config --help")]
 pub(crate) struct AddArgs {
-    /// Path for the new worktree/workspace (required unless --interactive)
+    /// Path for the new worktree/workspace (required unless --interactive, or path_template + branch)
     pub path: Option<PathBuf>,
 
     /// Branch or commit to checkout (git) / revision (jj)
@@ -439,33 +391,35 @@ pub(crate) struct AddArgs {
 /// Arguments for the `remove` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-VCS SUPPORT:
-    Works with both git worktree and jj workspace:
-    - Git: Removes worktree using `git worktree remove`
-    - jj:  Forgets workspace using `jj workspace forget`
-
-EXAMPLES:
-    kabu remove ../target-worktree-path
-        Remove worktree/workspace with safety checks
-
-    kabu remove --i
-        Select worktrees/workspaces to remove interactively
-
+QUICK EXAMPLES:
+    kabu remove ../old-worktree
     kabu remove --current
-        Remove the worktree/workspace containing the current directory
+    kabu remove --interactive
+    kabu remove --dry-run ../preview
 
-    kabu remove --dry-run ../target-worktree-path
-        Preview what would be removed without executing
+WHAT THIS COMMAND DOES:
+    - Removes git worktree / forgets jj workspace
+    - Runs pre_remove and post_remove hooks if trusted
+    - Supports interactive and current-target modes
 
-    kabu remove --force ../target-worktree-path
-        Force removal (skip safety checks and confirmation)
+VCS MAPPING:
+    - git: git worktree remove
+    - jj:  jj workspace forget
+    - colocated (git+jj): jj workspace forget is used
 
-SAFETY CHECKS:
-    By default, kabu remove warns about:
-    - Uncommitted changes (modified/staged files)
-    - Unpushed commits (git) or commits not on remote bookmarks (jj)
+TARGET SELECTION RULES:
+    - [PATHS]... accepts multiple targets
+    - --interactive selects targets from UI
+    - --current targets the worktree/workspace containing cwd
 
-    Use --force to skip safety checks and force removal.")]
+SAFETY NOTES:
+    - warns on dirty or unpushed state by default
+    - --force bypasses checks and confirmation
+    - main worktree/workspace cannot be removed
+
+SEE ALSO:
+    kabu list --help
+    kabu trust --help")]
 pub(crate) struct RemoveArgs {
     /// Worktree/workspace paths to remove (required unless --interactive or --current)
     pub paths: Vec<PathBuf>,
@@ -530,32 +484,29 @@ pub(crate) struct RemoveArgs {
 /// Arguments for the `list` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-VCS SUPPORT:
-    Works with both git worktree and jj workspace:
-    - Git: Lists worktrees using `git worktree list`
-    - jj:  Lists workspaces using `jj workspace list`
-
-STATUS SYMBOLS:
-    *  Uncommitted changes (modified, deleted, or untracked files)
-
-COLUMNS:
-    - Path: Worktree/workspace directory path
-    - Branch: Branch name (git) or bookmark/workspace name (jj)
-    - Commit: Short commit hash or change ID (jj)
-    - Status: Uncommitted changes indicator
-
-EXAMPLES:
+QUICK EXAMPLES:
     kabu list
-        List all worktrees/workspaces with detailed information
-
-    kabu list --header
-        Show header row with column names
-
+    kabu ls --header
     kabu list --path-only
-        List only paths (useful for scripting)
 
-    kabu ls -p --header
-        Combine options using the short alias")]
+WHAT THIS COMMAND DOES:
+    - Lists worktrees/workspaces from git or jj
+    - Shows branch/bookmark and commit/change information
+    - Marks dirty entries with '*'
+
+OUTPUT COLUMNS:
+    PATH    worktree/workspace path
+    BRANCH  git branch or jj bookmark/workspace label
+    COMMIT  short commit hash (git) or change id (jj)
+    STATUS  '*' when modified/deleted/untracked files exist
+
+MODES:
+    --path-only  print paths only (script-friendly)
+    --header     include header row
+
+SEE ALSO:
+    kabu path --help
+    kabu remove --help")]
 pub(crate) struct ListArgs {
     /// Show only worktree/workspace paths
     #[arg(short, long)]
@@ -582,53 +533,39 @@ pub(crate) struct ListArgs {
 /// Arguments for the `trust` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-SECURITY:
-    Hooks allow running custom commands before/after worktree operations.
-    For security, hooks require explicit trust before execution.
-
-    Trust is stored in: ~/.local/share/kabu/trusted/
-    Each repository's hooks are identified by a SHA256 hash.
-
-    If hooks are modified in the config file, you must re-trust them.
-
-HOOKS:
-    Platform support: Unix-like systems (Linux, macOS) and Windows.
-    On Windows, hooks run via an auto-detected shell (pwsh, powershell,
-    Git Bash, or cmd). Override with --hook-shell or KABUHOOK_SHELL.
-
-    pre_add      Run before worktree creation (in repo_root)
-    post_add     Run after worktree creation (in worktree_path)
-    pre_remove   Run before worktree removal (in worktree_path)
-    post_remove  Run after worktree removal (in repo_root)
-
-    Execution order (kabu add):
-      1. pre_add → 2. git worktree add → 3. mkdir/link/copy → 4. post_add
-
-    Execution order (kabu remove):
-      1. pre_remove → 2. git worktree remove → 3. post_remove
-
-    Hooks can use template variables (see kabu config for details):
-    {{worktree_path}}, {{worktree_name}}, {{branch}}, {{repo_root}}
-
-    Hooks also receive environment variables with raw (unescaped) values:
-    $KABU_WORKTREE_PATH, $KABU_WORKTREE_NAME, $KABU_BRANCH, $KABU_REPO_ROOT,
-    $KABU_VCS_TYPE, $KABU_CHANGE_ID, $KABU_COMMIT_ID
-
-EXAMPLES:
+QUICK EXAMPLES:
     kabu trust
-        Trust hooks in config file for the current repository
-
-    kabu trust --yes
-        Trust hooks without prompting
-
     kabu trust --show
-        Show hooks and trust status without trusting
-
     kabu trust --check
-        Exit 0 if hooks are trusted, 1 if trust is required
+    kabu trust --yes
 
-    kabu trust /path/to/repo
-        Trust hooks for a specific repository")]
+WHAT THIS COMMAND DOES:
+    - Reviews and trusts hooks for a repository
+    - Stores trust with a config snapshot hash
+    - Requires re-trust when hooks/config change
+
+HOOK EXECUTION MODEL:
+    pre_add      before add (repo root)
+    post_add     after add + setup (new worktree/workspace)
+    pre_remove   before remove (target worktree/workspace)
+    post_remove  after remove (repo root)
+
+WINDOWS SHELL RESOLUTION:
+    pwsh -> powershell -> git-bash -> cmd
+    override: --hook-shell (add/remove) or KABUHOOK_SHELL
+
+TRUST STORAGE:
+    Default location: ~/.local/share/kabu/trusted/
+    Repository identity + config snapshot are hashed for verification
+
+SAFETY NOTES:
+    - trusting allows all configured hooks to run
+    - use --show to review commands before trusting
+    - --check exits 0 when trusted, 1 when trust is required
+
+SEE ALSO:
+    kabu untrust --help
+    kabu config --help")]
 pub(crate) struct TrustArgs {
     /// Path to repository (defaults to current directory)
     pub path: Option<PathBuf>,
@@ -662,62 +599,38 @@ pub(crate) struct TrustArgs {
 /// Arguments for the `init` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-SHELL INTEGRATION:
-    kabu init enables shell integration features:
-    - Shell completions for all kabu commands and options
-    - kabu cd command for interactive worktree changing
-    - Automatic trust warnings when entering directories with untrusted hooks
-
-INSTALLATION:
-    Add to your shell configuration file:
-
-    Bash (~/.bashrc or ~/.bash_profile):
-      eval \"$(kabu init bash)\"
-
-    Zsh (~/.zshrc):
-      eval \"$(kabu init zsh)\"
-
-    Fish (~/.config/fish/config.fish):
-      kabu init fish | source
-
-    PowerShell (profile, open with: $PROFILE):
-      Invoke-Expression (& kabu init powershell | Out-String)
-
-    Elvish (~/.config/elvish/rc.elv):
-      eval (kabu init elvish | slurp)
-
-FEATURES:
-    Shell Completions
-        Provides intelligent tab completion for kabu commands and options.
-        Works across all supported shells.
-
-    kabu cd Command
-        Interactive fuzzy finder to select and cd to a worktree.
-        Uses ratatui-based UI across platforms
-
-        Note: kabu cd requires shell integration.
-        Without shell integration, use: cd \"$(kabu path)\"
-
-    Trust Warnings
-        When entering a directory with untrusted hooks, kabu displays a warning.
-        Review and trust hooks using: kabu trust
-
-EXAMPLES:
-    # Show init script for bash (add to ~/.bashrc)
-    kabu init bash
-
-    # Show init script for zsh (add to ~/.zshrc)
-    kabu init zsh
-
-    # Show full init script (used by shell config, not for manual viewing)
+QUICK EXAMPLES:
+    eval \"$(kabu init bash)\"
+    eval \"$(kabu init zsh)\"
+    kabu init fish | source
     kabu init bash --print-full-init
 
+WHAT THIS COMMAND DOES:
+    - Generates shell integration script
+    - Enables completion, kabu cd, and trust warnings
+
+SUPPORTED SHELLS:
+    bash, zsh, fish, powershell, elvish
+
+INSTALL PATTERNS:
+    bash:       eval \"$(kabu init bash)\"
+    zsh:        eval \"$(kabu init zsh)\"
+    fish:       kabu init fish | source
+    powershell: Invoke-Expression (& kabu init powershell | Out-String)
+    elvish:     eval (kabu init elvish | slurp)
+
 TROUBLESHOOTING:
-    If shell integration doesn't work after installation:
-    1. Restart your shell or source the config file manually
-    2. Verify the command is in your shell PATH: command -v kabu
-    3. Check shell config file was updated correctly
-    4. Review shell-specific documentation: kabu help init")]
+    1) reload shell session
+    2) confirm binary is in PATH
+    3) confirm init snippet is in shell rc/profile
+
+SAFETY NOTES:
+    - kabu cd requires shell integration
+    - without integration, use: cd \"$(kabu path)\"
+
+SEE ALSO:
+    kabu path --help
+    kabu completions --help")]
 pub(crate) struct InitArgs {
     /// Shell to generate init script for
     pub shell: Shell,
@@ -730,21 +643,26 @@ pub(crate) struct InitArgs {
 /// Arguments for the `path` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-VCS SUPPORT:
-    Works with both git worktree and jj workspace.
-
-EXAMPLES:
+QUICK EXAMPLES:
     kabu path
-        Select a worktree/workspace interactively and print its path
-
     kabu path --main
-        Print the main worktree/workspace path (useful for shell integration)
-
     cd \"$(kabu path)\"
-        Select a worktree/workspace and change to it
 
-    cd \"$(kabu path --main)\"
-        Change to the main worktree/workspace")]
+WHAT THIS COMMAND DOES:
+    - Prints selected worktree/workspace path
+    - --main returns the main worktree/workspace path
+
+SELECTION BEHAVIOR:
+    default   interactive selection UI
+    --main    no interaction, prints main path directly
+
+USAGE NOTES:
+    - Intended for command substitution in shells
+    - Works without shell integration unlike kabu cd
+
+SEE ALSO:
+    kabu cd
+    kabu list --help")]
 pub(crate) struct PathArgs {
     /// Print the main worktree/workspace path instead of interactive selection
     #[arg(long)]
@@ -754,15 +672,20 @@ pub(crate) struct PathArgs {
 /// Arguments for the `untrust` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-EXAMPLES:
+QUICK EXAMPLES:
     kabu untrust
-        Revoke trust for hooks in the current repository
-
     kabu untrust --list
-        List all trusted repositories
-
     kabu untrust /path/to/repo
-        Revoke trust for a specific repository")]
+
+WHAT THIS COMMAND DOES:
+    - Revokes trust for one repository or lists trusted repositories
+
+MODES:
+    default      revoke trust for current (or given) repository
+    --list       print all trusted repository entries
+
+SEE ALSO:
+    kabu trust --help")]
 pub(crate) struct UntrustArgs {
     /// Path to repository (defaults to current directory)
     pub path: Option<PathBuf>,

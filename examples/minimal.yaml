@@ -1,12 +1,9 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
-# Minimal kabu configuration
-# Copy this file to .kabu/config.yaml in your repository root to get started.
+# When to use: Start from the smallest valid config.
+# Run: kabu add ../wt-min
+# Expected effect: Creates a worktree/workspace without extra setup operations.
+# Pitfall: Do not use `defaults.on_conflict`; use top-level `on_conflict`.
 
-# This is the simplest possible configuration with no operations.
-# kabu will create worktrees without any additional setup.
-# You can add operations as needed.
-
-# Uncomment to set global conflict handling
-# defaults:
-#   on_conflict: backup  # abort, skip, overwrite, backup
+# Optional global conflict mode
+# on_conflict: backup

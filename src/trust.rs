@@ -107,7 +107,7 @@ fn set_test_trust_dir(path: PathBuf) {
 /// - worktree (path_template, branch_template)
 /// - hooks (pre_add, post_add, pre_remove, post_remove)
 /// - mkdir operations (path, description)
-/// - link operations (source, target, on_conflict, description, ignore_tracked)
+/// - link operations (source, target, on_conflict, description, skip_tracked)
 /// - copy operations (source, target, on_conflict, description)
 ///
 /// **Stability**: Uses explicit JSON serialization to ensure the hash remains stable

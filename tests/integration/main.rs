@@ -4,6 +4,7 @@ mod common;
 
 mod add;
 mod config;
+mod help;
 mod hooks;
 mod list;
 mod remove;

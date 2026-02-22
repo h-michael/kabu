@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
+
+# When to use: Node.js repositories that need install/setup after add.
+# Run: kabu trust && kabu add ../wt-node -b wt-node
+# Expected effect: Bootstraps dependencies and optional project setup.
+# Pitfall: Keep hook commands idempotent for repeated runs.
+
+on_conflict: skip
+
+copy:
+  - source: .env.example
+    target: .env
+    description: Environment template
+
+hooks:
+  post_add:
+    - command: npm install
+      description: Install dependencies
+
+    - command: npm run setup
+      description: Run project setup task

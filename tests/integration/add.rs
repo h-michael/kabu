@@ -352,7 +352,7 @@ fn test_add_with_glob_pattern() {
 }
 
 #[test]
-fn test_add_with_glob_ignore_tracked() {
+fn test_add_with_glob_skip_tracked() {
     let mut repo = TestRepo::with_config(CONFIG_WITH_GLOB_IGNORE_TRACKED);
 
     // Create tracked file
@@ -379,7 +379,7 @@ fn test_add_with_glob_ignore_tracked() {
 
     repo.register_worktree(worktree_path.clone());
 
-    // Only untracked file should be linked (ignore_tracked: true)
+    // Only untracked file should be linked (skip_tracked: true)
     assert!(repo.worktree_symlink_exists("ignore-tracked-test", "fixtures/untracked.txt"));
     // tracked.txt should NOT be linked (it's git-tracked)
     assert!(!repo.worktree_symlink_exists("ignore-tracked-test", "fixtures/tracked.txt"));

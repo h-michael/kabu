@@ -47,11 +47,11 @@ link:
     description: Link all txt fixtures
 "#;
 
-/// Configuration with glob patterns and ignore_tracked option
+/// Configuration with glob patterns and skip_tracked option
 pub const CONFIG_WITH_GLOB_IGNORE_TRACKED: &str = r#"
 link:
   - source: "fixtures/*"
-    ignore_tracked: true
+    skip_tracked: true
     description: Link untracked fixtures only
 "#;
 

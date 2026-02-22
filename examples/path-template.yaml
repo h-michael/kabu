@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
+
+# When to use: Standardize where new worktrees/workspaces are created.
+# Run: kabu add -b feature/login
+# Expected effect: If path is omitted, kabu suggests/uses template-based paths.
+# Pitfall: Use `{{...}}` placeholders, not single braces like `{branch}`.
+
+worktree:
+  path_template: ../worktrees/{{repository}}/{{branch}}
+
+# Other valid examples:
+# worktree:
+#   path_template: ../{{repository}}-{{branch}}
+#
+# worktree:
+#   path_template: /home/user/worktrees/{{repository}}/{{branch}}
