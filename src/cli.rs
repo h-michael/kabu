@@ -123,6 +123,9 @@ CONFIG KEYS (TOP LEVEL):
       pre_add/post_add/pre_remove/post_remove:
         - command: string (required)
           description: string (optional)
+    on_setup_failure:
+      remove_worktree: bool (optional; default = false)
+      delete_branch: bool (optional; default = false)
     ui:
       add_default_mode: existing | new
       show_key_hints: bool

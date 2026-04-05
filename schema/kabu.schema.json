@@ -38,6 +38,9 @@
         }
       ]
     },
+    "on_setup_failure": {
+      "$ref": "#/$defs/OnSetupFailure"
+    },
     "ui": {
       "$ref": "#/$defs/Ui"
     },
@@ -266,6 +269,28 @@
         "overwrite",
         "backup"
       ]
+    },
+    "OnSetupFailure": {
+      "title": "On Setup Failure",
+      "description": "Behavior when setup operations (mkdir/link/copy) fail after worktree creation",
+      "type": "object",
+      "properties": {
+        "delete_branch": {
+          "description": "Delete the branch if it was newly created by this operation",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "remove_worktree": {
+          "description": "Remove the worktree that was just created",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "Ui": {
       "title": "UI",
