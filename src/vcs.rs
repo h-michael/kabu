@@ -152,6 +152,9 @@ pub(crate) trait VcsProvider {
 
     /// Validate a branch/bookmark name.
     fn validate_branch_name(&self, name: &str) -> Result<Option<String>>;
+
+    /// Force-delete a branch (git) or bookmark (jj).
+    fn delete_branch(&self, name: &str) -> Result<()>;
 }
 
 /// Get the appropriate VCS provider for the current directory.

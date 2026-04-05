@@ -82,6 +82,10 @@ impl VcsProvider for JjProvider {
     fn validate_branch_name(&self, name: &str) -> Result<Option<String>> {
         validate_bookmark_name(name)
     }
+
+    fn delete_branch(&self, name: &str) -> Result<()> {
+        delete_bookmark(name)
+    }
 }
 
 /// Check if current directory is inside a jj repository.
@@ -243,6 +247,23 @@ fn create_bookmark_at_workspace(workspace_path: &Path, name: &str) -> Result<()>
             command: format!("jj bookmark create {}", name),
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         });
+    }
+
+    Ok(())
+}
+
+/// Delete a bookmark.
+pub(crate) fn delete_bookmark(name: &str) -> Result<()> {
+    let output = Command::new("jj")
+        .args(["bookmark", "delete", name])
+        .output()?;
+
+    if !output.status.success() {
+        eprintln!(
+            "Warning: Failed to delete bookmark '{}': {}",
+            name,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
 
     Ok(())
