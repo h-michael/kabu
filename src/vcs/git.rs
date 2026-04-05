@@ -76,6 +76,10 @@ impl VcsProvider for GitProvider {
     fn validate_branch_name(&self, name: &str) -> Result<Option<String>> {
         validate_branch_name(name)
     }
+
+    fn delete_branch(&self, name: &str) -> Result<()> {
+        delete_branch(name)
+    }
 }
 
 /// Run `git worktree add` with CLI arguments.
@@ -185,6 +189,21 @@ fn worktree_remove_inner(path: &std::path::Path, force: bool) -> Result<std::pro
     cmd.arg(path);
 
     Ok(cmd.output()?)
+}
+
+/// Force-delete a local branch.
+pub(crate) fn delete_branch(name: &str) -> Result<()> {
+    let output = Command::new("git").args(["branch", "-D", name]).output()?;
+
+    if !output.status.success() {
+        eprintln!(
+            "Warning: Failed to delete branch '{}': {}",
+            name,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    Ok(())
 }
 
 /// Get recent commits for a branch or commitish.

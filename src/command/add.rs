@@ -189,10 +189,19 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         &output,
         provider.as_ref(),
     ) {
-        // Rollback: remove the workspace on failure
         if !args.dry_run {
-            eprintln!("Setup failed, rolling back workspace creation...");
-            let _ = provider.workspace_remove(&worktree_path, true);
+            let remove_worktree = config.on_setup_failure.remove_worktree.unwrap_or(false);
+            let delete_branch = config.on_setup_failure.delete_branch.unwrap_or(false);
+
+            if remove_worktree {
+                eprintln!("Setup failed, rolling back workspace creation...");
+                let _ = provider.workspace_remove(&worktree_path, true);
+            }
+            if delete_branch
+                && let Some(branch) = args.new_branch.as_ref().or(args.new_branch_force.as_ref())
+            {
+                let _ = provider.delete_branch(branch);
+            }
         }
         return Err(e);
     }

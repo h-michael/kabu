@@ -158,6 +158,8 @@ pub(crate) struct RawConfig {
     #[serde(default)]
     worktree: RawWorktree,
     #[serde(default)]
+    on_setup_failure: RawOnSetupFailure,
+    #[serde(default)]
     ui: RawUi,
     #[serde(default)]
     hooks: RawHooks,
@@ -191,6 +193,20 @@ struct RawAutoCd {
 struct RawWorktree {
     path_template: Option<String>,
     branch_template: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(
+    rename = "OnSetupFailure",
+    title = "On Setup Failure",
+    description = "Behavior when setup operations (mkdir/link/copy) fail after worktree creation"
+)]
+struct RawOnSetupFailure {
+    /// Remove the worktree that was just created
+    remove_worktree: Option<bool>,
+    /// Delete the branch if it was newly created by this operation
+    delete_branch: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
@@ -367,6 +383,7 @@ pub(crate) struct Config {
     pub on_conflict: Option<OnConflict>,
     pub auto_cd: AutoCd,
     pub worktree: Worktree,
+    pub on_setup_failure: OnSetupFailure,
     pub ui: Ui,
     pub hooks: Hooks,
     pub mkdir: Vec<Mkdir>,
@@ -397,6 +414,13 @@ pub(crate) fn merge_with_global(mut repo: Config, global: Option<&Config>) -> Co
 
     if repo.worktree.branch_template.is_none() {
         repo.worktree.branch_template = global.worktree.branch_template.clone();
+    }
+
+    if repo.on_setup_failure.remove_worktree.is_none() {
+        repo.on_setup_failure.remove_worktree = global.on_setup_failure.remove_worktree;
+    }
+    if repo.on_setup_failure.delete_branch.is_none() {
+        repo.on_setup_failure.delete_branch = global.on_setup_failure.delete_branch;
     }
 
     repo.ui.colors = repo.ui.colors.merge_with_fallback(&global.ui.colors);
@@ -589,6 +613,10 @@ impl TryFrom<RawConfig> for Config {
                 path_template: raw.worktree.path_template,
                 branch_template: raw.worktree.branch_template,
             },
+            on_setup_failure: OnSetupFailure {
+                remove_worktree: raw.on_setup_failure.remove_worktree,
+                delete_branch: raw.on_setup_failure.delete_branch,
+            },
             ui: Ui {
                 colors: ui_colors,
                 show_key_hints: raw.ui.show_key_hints,
@@ -665,6 +693,13 @@ impl AutoCd {
 pub(crate) struct Worktree {
     pub path_template: Option<String>,
     pub branch_template: Option<String>,
+}
+
+/// Behavior when setup operations fail after worktree creation.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OnSetupFailure {
+    pub remove_worktree: Option<bool>,
+    pub delete_branch: Option<bool>,
 }
 
 /// Interactive UI configuration.
