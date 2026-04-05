@@ -432,7 +432,7 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::config::{AutoCd, Config, Hooks, Mkdir, Ui, Worktree};
+    use crate::config::{AutoCd, Config, Hooks, Mkdir, OnSetupFailure, Ui, Worktree};
     use std::sync::OnceLock;
     use tempfile::TempDir;
 
@@ -450,6 +450,7 @@ mod tests {
                 path_template: None,
                 branch_template: None,
             },
+            on_setup_failure: OnSetupFailure::default(),
             ui: Ui::default(),
             hooks: Hooks::default(),
             mkdir: Vec::new(),
