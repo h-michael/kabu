@@ -555,6 +555,26 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
         HashSet::new()
     };
 
+    // Build a set of directories that contain tracked files.
+    // git ls-files only returns file paths, so directories themselves won't appear
+    // in tracked_files. We need this to skip directories whose contents are tracked.
+    let tracked_dirs: HashSet<PathBuf> = if link.skip_tracked {
+        let mut dirs = HashSet::new();
+        for f in &tracked_files {
+            let mut parent = f.parent();
+            while let Some(p) = parent {
+                if p.as_os_str().is_empty() {
+                    break;
+                }
+                dirs.insert(p.to_path_buf());
+                parent = p.parent();
+            }
+        }
+        dirs
+    } else {
+        HashSet::new()
+    };
+
     // Walk the repository and find matching files and directories
     // Collect matched directories to avoid processing their contents
     let mut matched_dirs: HashSet<PathBuf> = HashSet::new();
@@ -592,8 +612,15 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
         }
 
         // Skip if it's tracked and skip_tracked is true
-        if link.skip_tracked && tracked_files.contains(rel_path) {
-            continue;
+        if link.skip_tracked {
+            if tracked_files.contains(rel_path) {
+                continue;
+            }
+            // Directories containing tracked files should also be skipped,
+            // as git ls-files only returns file paths, not directory paths
+            if path.is_dir() && tracked_dirs.contains(rel_path) {
+                continue;
+            }
         }
 
         // If it's a directory, add to matched_dirs to skip its contents
@@ -827,6 +854,96 @@ mod impure_tests {
         } else {
             eprintln!(
                 "Warning: Expected 1 result but got {}. This may be environment-dependent.",
+                result.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_expand_link_skip_tracked_directory() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let repo_root = temp_dir.path();
+
+        // Initialize git repo
+        let init_result = std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_root)
+            .output();
+
+        if init_result.is_err() {
+            eprintln!("Skipping test: git not available");
+            return;
+        }
+
+        // Configure git user for the test repo
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo_root)
+            .output()
+            .ok();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_root)
+            .output()
+            .ok();
+
+        // Create directory structure:
+        // .config/tracked-dir/file.txt  (tracked)
+        // .config/untracked-dir/file.txt  (untracked)
+        // .config/untracked-file.txt  (untracked)
+        std::fs::create_dir_all(repo_root.join(".config/tracked-dir")).unwrap();
+        std::fs::write(repo_root.join(".config/tracked-dir/file.txt"), "tracked").unwrap();
+        std::fs::create_dir_all(repo_root.join(".config/untracked-dir")).unwrap();
+        std::fs::write(
+            repo_root.join(".config/untracked-dir/file.txt"),
+            "untracked",
+        )
+        .unwrap();
+        std::fs::write(repo_root.join(".config/untracked-file.txt"), "untracked").unwrap();
+
+        // Track only the file inside tracked-dir
+        let add_result = std::process::Command::new("git")
+            .args(["add", ".config/tracked-dir/file.txt"])
+            .current_dir(repo_root)
+            .output();
+
+        if add_result.is_err() || !add_result.unwrap().status.success() {
+            eprintln!("Skipping test: git add failed");
+            return;
+        }
+
+        let commit_result = std::process::Command::new("git")
+            .args(["commit", "-m", "Add tracked dir"])
+            .current_dir(repo_root)
+            .output();
+
+        if commit_result.is_err() || !commit_result.unwrap().status.success() {
+            eprintln!("Skipping test: git commit failed");
+            return;
+        }
+
+        let link = Link {
+            source: PathBuf::from(".config/*"),
+            target: PathBuf::from(".config/*"),
+            on_conflict: None,
+            description: None,
+            skip_tracked: true,
+        };
+
+        let provider = vcs::GitProvider;
+        let result = expand_link(&link, repo_root, &provider).unwrap();
+
+        // Should skip tracked-dir (directory containing tracked files)
+        // and include untracked-dir and untracked-file.txt
+        if result.len() == 2 {
+            let mut sources: Vec<_> = result.iter().map(|l| l.source.clone()).collect();
+            sources.sort();
+            assert_eq!(sources[0], PathBuf::from(".config/untracked-dir"));
+            assert_eq!(sources[1], PathBuf::from(".config/untracked-file.txt"));
+        } else {
+            eprintln!(
+                "Warning: Expected 2 results but got {}. This may be environment-dependent.",
                 result.len()
             );
         }
