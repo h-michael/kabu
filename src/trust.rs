@@ -144,7 +144,8 @@ pub(crate) fn compute_hash(main_worktree_path: &Path, config: &Config) -> Result
         })?;
     hasher.update(snapshot_json.as_bytes());
 
-    Ok(format!("{:x}", hasher.finalize()))
+    let result = hasher.finalize();
+    Ok(result.iter().map(|b| format!("{:02x}", b)).collect())
 }
 
 /// Convert main worktree path to directory name for nested storage.
@@ -169,7 +170,8 @@ fn main_worktree_dir_name(path: &Path) -> String {
     let hash = hasher.finalize();
 
     // Use first 16 hex characters for reasonable uniqueness while keeping directory names shorter
-    format!("{:x}", hash)[..16].to_string()
+    let hex: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
+    hex[..16].to_string()
 }
 
 /// Check if configuration is trusted for the given main worktree.
