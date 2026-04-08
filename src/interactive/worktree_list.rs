@@ -15,13 +15,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::{
-    STEP_SELECT_WORKTREE, UiLayout, UiTheme, is_help_key, read_key_event, truncate_text_for_width,
-    with_terminal,
+    STEP_SELECT_WORKTREE, TextInputState, UiLayout, UiTheme, is_help_key, read_key_event,
+    set_search_cursor, truncate_text_for_width, with_terminal,
 };
 
 const SINGLE_MODE_HINTS: &str =
-    "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Esc] cancel  [F1] help";
-const MULTI_MODE_HINTS: &str = "[Enter] confirm  [Space] toggle  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Esc] cancel  [F1] help";
+    "[Enter] select  [Up/Down/Ctrl+P/N] move  type: search  [Esc] cancel  [F1] help";
+const MULTI_MODE_HINTS: &str = "[Enter] confirm  [Space] toggle  [Up/Down/Ctrl+P/N] move  type: search  [Esc] cancel  [F1] help";
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorktreeEntry {
@@ -114,7 +114,7 @@ fn run_worktree_list(
 ) -> Result<Vec<PathBuf>> {
     let mut state = WorktreeListState::new();
     let mut matcher = NucleoState::new(entries)?;
-    matcher.update_query(&state.query);
+    matcher.update_query(&state.query.value);
     matcher.tick(&mut state)?;
     let mut last_tick = Instant::now();
 
@@ -135,7 +135,7 @@ fn run_worktree_list(
         if let Some(key) = read_key_event(timeout)? {
             match handle_key_event(&mut state, mode, key)? {
                 InputAction::None => {}
-                InputAction::QueryChanged => matcher.update_query(&state.query),
+                InputAction::QueryChanged => matcher.update_query(&state.query.value),
                 InputAction::Accept => return finalize_selection(&state, mode),
             }
         }
@@ -143,7 +143,7 @@ fn run_worktree_list(
 }
 
 struct WorktreeListState {
-    query: String,
+    query: TextInputState,
     cursor: usize,
     selected: IndexSet<PathBuf>,
     matches: Vec<WorktreeEntry>,
@@ -153,7 +153,7 @@ struct WorktreeListState {
 impl WorktreeListState {
     fn new() -> Self {
         Self {
-            query: String::new(),
+            query: TextInputState::new(String::new()),
             cursor: 0,
             selected: IndexSet::new(),
             matches: Vec::new(),
@@ -267,17 +267,37 @@ fn handle_key_event(
         KeyCode::Enter => return Ok(InputAction::Accept),
         KeyCode::Up => state.move_up(),
         KeyCode::Down => state.move_down(),
+        KeyCode::Home => state.query.move_to_start(),
+        KeyCode::End => state.query.move_to_end(),
+        KeyCode::Left => state.query.move_left(),
+        KeyCode::Right => state.query.move_right(),
         KeyCode::Backspace => {
-            state.query.pop();
+            state.query.backspace();
             return Ok(InputAction::QueryChanged);
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match c {
-                    'p' | 'k' => state.move_up(),
-                    'n' | 'j' => state.move_down(),
+                    'p' => state.move_up(),
+                    'n' => state.move_down(),
+                    'a' => state.query.move_to_start(),
+                    'e' => state.query.move_to_end(),
+                    'f' => state.query.move_right(),
+                    'b' => state.query.move_left(),
+                    'd' => {
+                        state.query.delete_char();
+                        return Ok(InputAction::QueryChanged);
+                    }
+                    'k' => {
+                        state.query.kill_to_end();
+                        return Ok(InputAction::QueryChanged);
+                    }
                     'u' => {
                         state.query.clear();
+                        return Ok(InputAction::QueryChanged);
+                    }
+                    'w' => {
+                        state.query.delete_word_backward();
                         return Ok(InputAction::QueryChanged);
                     }
                     _ => {}
@@ -290,7 +310,7 @@ fn handle_key_event(
                     }
                 }
             } else {
-                state.query.push(c);
+                state.query.insert_char(c);
                 return Ok(InputAction::QueryChanged);
             }
         }
@@ -330,7 +350,7 @@ fn draw_worktree_list(
     let search_line = Line::from(vec![
         Span::styled("", theme.search_style()),
         Span::styled(
-            &state.query,
+            &state.query.value,
             theme.search_style().add_modifier(Modifier::BOLD),
         ),
     ]);
@@ -338,6 +358,7 @@ fn draw_worktree_list(
         Paragraph::new(search_line).block(search_block),
         left_chunks[0],
     );
+    set_search_cursor(frame, left_chunks[0], &state.query);
 
     let items: Vec<ListItem> = state
         .matches
@@ -735,7 +756,7 @@ mod tests {
     #[test]
     fn test_worktree_list_state_new() {
         let state = WorktreeListState::new();
-        assert_eq!(state.query, "");
+        assert_eq!(state.query.value, "");
         assert_eq!(state.cursor, 0);
         assert!(state.selected.is_empty());
         assert!(state.matches.is_empty());
@@ -893,16 +914,6 @@ mod tests {
         let key = create_key_event(KeyCode::Char('p'), KeyModifiers::CONTROL);
         handle_key_event(&mut state, SelectMode::Single, key).unwrap();
         assert_eq!(state.cursor, 0);
-
-        // Ctrl+j (down)
-        let key = create_key_event(KeyCode::Char('j'), KeyModifiers::CONTROL);
-        handle_key_event(&mut state, SelectMode::Single, key).unwrap();
-        assert_eq!(state.cursor, 1);
-
-        // Ctrl+k (up)
-        let key = create_key_event(KeyCode::Char('k'), KeyModifiers::CONTROL);
-        handle_key_event(&mut state, SelectMode::Single, key).unwrap();
-        assert_eq!(state.cursor, 0);
     }
 
     #[test]
@@ -913,34 +924,34 @@ mod tests {
         let key = create_key_event(KeyCode::Char('a'), KeyModifiers::NONE);
         let result = handle_key_event(&mut state, SelectMode::Single, key);
         assert!(matches!(result, Ok(InputAction::QueryChanged)));
-        assert_eq!(state.query, "a");
+        assert_eq!(state.query.value, "a");
 
         // Type 'b'
         let key = create_key_event(KeyCode::Char('b'), KeyModifiers::NONE);
         handle_key_event(&mut state, SelectMode::Single, key).unwrap();
-        assert_eq!(state.query, "ab");
+        assert_eq!(state.query.value, "ab");
     }
 
     #[test]
     fn test_handle_key_event_backspace() {
         let mut state = WorktreeListState::new();
-        state.query = "test".to_string();
+        state.query = TextInputState::new("test".to_string());
 
         let key = create_key_event(KeyCode::Backspace, KeyModifiers::NONE);
         let result = handle_key_event(&mut state, SelectMode::Single, key);
         assert!(matches!(result, Ok(InputAction::QueryChanged)));
-        assert_eq!(state.query, "tes");
+        assert_eq!(state.query.value, "tes");
     }
 
     #[test]
     fn test_handle_key_event_ctrl_u_clears_query() {
         let mut state = WorktreeListState::new();
-        state.query = "test query".to_string();
+        state.query = TextInputState::new("test query".to_string());
 
         let key = create_key_event(KeyCode::Char('u'), KeyModifiers::CONTROL);
         let result = handle_key_event(&mut state, SelectMode::Single, key);
         assert!(matches!(result, Ok(InputAction::QueryChanged)));
-        assert_eq!(state.query, "");
+        assert_eq!(state.query.value, "");
     }
 
     #[test]
@@ -968,7 +979,7 @@ mod tests {
         let key = create_key_event(KeyCode::Char(' '), KeyModifiers::NONE);
         let result = handle_key_event(&mut state, SelectMode::Single, key);
         assert!(matches!(result, Ok(InputAction::QueryChanged)));
-        assert_eq!(state.query, " ");
+        assert_eq!(state.query.value, " ");
         assert!(state.selected.is_empty());
     }
 
@@ -1033,7 +1044,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let mut state = WorktreeListState::new();
         state.matches = create_test_entries();
-        state.query = "feature".to_string();
+        state.query = TextInputState::new("feature".to_string());
         let theme = UiTheme::default();
 
         terminal
