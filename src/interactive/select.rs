@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap};
 
 const SIMPLE_SELECT_HINTS: &str =
-    "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  [Esc] cancel  [F1] help";
+    "[Enter] select  [Up/Down/Ctrl+P/N] move  [Esc] cancel  [F1] help";
 const CONFIRM_HINTS: &str = "[Enter] yes  [N] no  [Esc] cancel  [F1] help";
 
 use std::time::Duration;
@@ -129,8 +129,8 @@ fn run_simple_select(
                 KeyCode::Up => state.move_up(),
                 KeyCode::Down => state.move_down(items.len()),
                 KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => match c {
-                    'p' | 'k' => state.move_up(),
-                    'n' | 'j' => state.move_down(items.len()),
+                    'p' => state.move_up(),
+                    'n' => state.move_down(items.len()),
                     _ => {}
                 },
                 _ => {}

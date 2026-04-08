@@ -13,6 +13,8 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
+use unicode_width::UnicodeWidthStr;
+
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::Duration;
@@ -28,6 +30,123 @@ pub(crate) use add::{AddInteractiveInput, WorktreeSummary, run_add_interactive};
 pub(crate) use conflict::{ConflictChoice, prompt_conflict};
 pub(crate) use path::run_path_interactive;
 pub(crate) use remove::{SafetyWarning, run_remove_confirmation, run_remove_selection};
+
+#[derive(Debug, Clone)]
+struct TextInputState {
+    value: String,
+    cursor: usize,
+}
+
+impl TextInputState {
+    fn new(initial: String) -> Self {
+        let cursor = initial.chars().count();
+        Self {
+            value: initial,
+            cursor,
+        }
+    }
+
+    fn insert_char(&mut self, c: char) {
+        let idx = self.byte_index(self.cursor);
+        self.value.insert(idx, c);
+        self.cursor += 1;
+    }
+
+    fn backspace(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let idx = self.byte_index(self.cursor - 1);
+        self.value.remove(idx);
+        self.cursor -= 1;
+    }
+
+    fn delete_char(&mut self) {
+        let len = self.value.chars().count();
+        if self.cursor >= len {
+            return;
+        }
+        let idx = self.byte_index(self.cursor);
+        self.value.remove(idx);
+    }
+
+    fn move_left(&mut self) {
+        if self.cursor > 0 {
+            self.cursor -= 1;
+        }
+    }
+
+    fn move_right(&mut self) {
+        if self.cursor < self.value.chars().count() {
+            self.cursor += 1;
+        }
+    }
+
+    fn clear(&mut self) {
+        self.value.clear();
+        self.cursor = 0;
+    }
+
+    fn move_to_start(&mut self) {
+        self.cursor = 0;
+    }
+
+    fn move_to_end(&mut self) {
+        self.cursor = self.value.chars().count();
+    }
+
+    fn kill_to_end(&mut self) {
+        let idx = self.byte_index(self.cursor);
+        self.value.truncate(idx);
+    }
+
+    fn delete_word_backward(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let chars: Vec<char> = self.value.chars().collect();
+        let mut pos = self.cursor;
+        while pos > 0 && chars[pos - 1] == ' ' {
+            pos -= 1;
+        }
+        while pos > 0 && chars[pos - 1] != ' ' {
+            pos -= 1;
+        }
+        let start_byte = self.byte_index(pos);
+        let end_byte = self.byte_index(self.cursor);
+        self.value.drain(start_byte..end_byte);
+        self.cursor = pos;
+    }
+
+    fn byte_index(&self, char_index: usize) -> usize {
+        if char_index == 0 {
+            return 0;
+        }
+        self.value
+            .char_indices()
+            .nth(char_index)
+            .map(|(idx, _)| idx)
+            .unwrap_or_else(|| self.value.len())
+    }
+
+    fn text_before_cursor(&self) -> &str {
+        let idx = self.byte_index(self.cursor);
+        &self.value[..idx]
+    }
+}
+
+fn set_search_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, input: &TextInputState) {
+    let padding_left = 1u16;
+    let padding_top = 0u16;
+    let x_offset = input.text_before_cursor().width();
+    let x = area
+        .x
+        .saturating_add(1)
+        .saturating_add(padding_left)
+        .saturating_add(x_offset as u16);
+    let y = area.y.saturating_add(1).saturating_add(padding_top);
+    frame.set_cursor_position((x, y));
+}
 
 // Shared step name constants for breadcrumb navigation
 const STEP_ACTION: &str = "Choose action";
@@ -545,7 +664,7 @@ fn draw_help_modal(frame: &mut ratatui::Frame<'_>, theme: UiTheme) {
     let size = frame.area();
 
     let modal_width = std::cmp::min(58, size.width.saturating_sub(4));
-    let modal_height = std::cmp::min(20, size.height.saturating_sub(4));
+    let modal_height = std::cmp::min(23, size.height.saturating_sub(4));
     let modal_x = (size.width.saturating_sub(modal_width)) / 2;
     let modal_y = (size.height.saturating_sub(modal_height)) / 2;
 
@@ -554,11 +673,11 @@ fn draw_help_modal(frame: &mut ratatui::Frame<'_>, theme: UiTheme) {
     let lines = vec![
         Line::from(Span::styled("Navigation", theme.title_style())),
         Line::from(vec![
-            Span::styled("  [Up/Ctrl+P/Ctrl+K]     ", theme.accent_style()),
+            Span::styled("  [Up/Ctrl+P]    ", theme.accent_style()),
             Span::raw("Move up"),
         ]),
         Line::from(vec![
-            Span::styled("  [Down/Ctrl+N/Ctrl+J]     ", theme.accent_style()),
+            Span::styled("  [Down/Ctrl+N]  ", theme.accent_style()),
             Span::raw("Move down"),
         ]),
         Line::from(""),
@@ -586,8 +705,12 @@ fn draw_help_modal(frame: &mut ratatui::Frame<'_>, theme: UiTheme) {
         Line::from(""),
         Line::from(Span::styled("Text Input", theme.title_style())),
         Line::from(vec![
-            Span::styled("  [Left/Right]   ", theme.accent_style()),
-            Span::raw("Move cursor"),
+            Span::styled("  [Left/Ctrl+F]  ", theme.accent_style()),
+            Span::raw("Move cursor forward"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Right/Ctrl+B] ", theme.accent_style()),
+            Span::raw("Move cursor backward"),
         ]),
         Line::from(vec![
             Span::styled("  [Home/Ctrl+A]  ", theme.accent_style()),
@@ -598,12 +721,16 @@ fn draw_help_modal(frame: &mut ratatui::Frame<'_>, theme: UiTheme) {
             Span::raw("Move to line end"),
         ]),
         Line::from(vec![
-            Span::styled("  [Ctrl+U]       ", theme.accent_style()),
-            Span::raw("Clear line"),
+            Span::styled("  [Ctrl+D]       ", theme.accent_style()),
+            Span::raw("Delete character"),
         ]),
         Line::from(vec![
             Span::styled("  [Ctrl+K]       ", theme.accent_style()),
             Span::raw("Delete to end of line"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Ctrl+U]       ", theme.accent_style()),
+            Span::raw("Clear line"),
         ]),
         Line::from(vec![
             Span::styled("  [Ctrl+W]       ", theme.accent_style()),

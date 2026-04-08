@@ -15,7 +15,8 @@ use std::{fs, io};
 
 use super::{
     STEP_ACTION, STEP_BASE, STEP_BRANCH, STEP_BRANCH_NAME, STEP_COMMIT, STEP_CONFIRM,
-    STEP_WORKTREE_PATH, UiLayout, UiTheme, is_help_key, read_key_event, with_terminal,
+    STEP_WORKTREE_PATH, TextInputState, UiLayout, UiTheme, is_help_key, read_key_event,
+    set_search_cursor, with_terminal,
 };
 
 #[derive(Debug, Clone)]
@@ -188,105 +189,13 @@ enum NewBranchAction {
 }
 
 #[derive(Debug, Clone)]
-struct TextInputState {
-    value: String,
-    cursor: usize,
-}
-
-impl TextInputState {
-    fn new(initial: String) -> Self {
-        let cursor = initial.chars().count();
-        Self {
-            value: initial,
-            cursor,
-        }
-    }
-
-    fn insert_char(&mut self, c: char) {
-        let idx = self.byte_index(self.cursor);
-        self.value.insert(idx, c);
-        self.cursor += 1;
-    }
-
-    fn backspace(&mut self) {
-        if self.cursor == 0 {
-            return;
-        }
-        let idx = self.byte_index(self.cursor - 1);
-        self.value.remove(idx);
-        self.cursor -= 1;
-    }
-
-    fn move_left(&mut self) {
-        if self.cursor > 0 {
-            self.cursor -= 1;
-        }
-    }
-
-    fn move_right(&mut self) {
-        if self.cursor < self.value.chars().count() {
-            self.cursor += 1;
-        }
-    }
-
-    fn clear(&mut self) {
-        self.value.clear();
-        self.cursor = 0;
-    }
-
-    fn move_to_start(&mut self) {
-        self.cursor = 0;
-    }
-
-    fn move_to_end(&mut self) {
-        self.cursor = self.value.chars().count();
-    }
-
-    fn kill_to_end(&mut self) {
-        let idx = self.byte_index(self.cursor);
-        self.value.truncate(idx);
-    }
-
-    fn delete_word_backward(&mut self) {
-        if self.cursor == 0 {
-            return;
-        }
-        let chars: Vec<char> = self.value.chars().collect();
-        let mut pos = self.cursor;
-        // Skip leading whitespace before cursor
-        while pos > 0 && chars[pos - 1] == ' ' {
-            pos -= 1;
-        }
-        // Skip word characters
-        while pos > 0 && chars[pos - 1] != ' ' {
-            pos -= 1;
-        }
-        let start_byte = self.byte_index(pos);
-        let end_byte = self.byte_index(self.cursor);
-        self.value.drain(start_byte..end_byte);
-        self.cursor = pos;
-    }
-
-    fn byte_index(&self, char_index: usize) -> usize {
-        if char_index == 0 {
-            return 0;
-        }
-        self.value
-            .char_indices()
-            .nth(char_index)
-            .map(|(idx, _)| idx)
-            .unwrap_or_else(|| self.value.len())
-    }
-}
-
-#[derive(Debug, Clone)]
 struct AddUiState {
     step: AddStep,
     branch_tab: BranchTab,
     branch_purpose: BranchPurpose,
     branch_rows: Vec<BranchRow>,
     branch_cursor: usize,
-    branch_query: String,
+    branch_query: TextInputState,
     matches: Vec<BranchRow>,
     selected_branch: Option<BranchItem>,
     new_branch_origin: Option<NewBranchOrigin>,
@@ -323,7 +232,7 @@ impl AddUiState {
             branch_purpose: BranchPurpose::UseExisting,
             branch_rows: Vec::new(),
             branch_cursor: 0,
-            branch_query: String::new(),
+            branch_query: TextInputState::new(String::new()),
             matches: Vec::new(),
             selected_branch: None,
             new_branch_origin: None,
@@ -465,14 +374,14 @@ fn update_branch_rows(state: &mut AddUiState, input: &AddInteractiveInput) {
 }
 
 fn filter_branch_rows(state: &mut AddUiState) {
-    if state.branch_query.is_empty() {
+    if state.branch_query.value.is_empty() {
         state.matches = state.branch_rows.clone();
         state.branch_cursor = 0;
         state.move_branch_to_next_selectable();
         return;
     }
 
-    let query = state.branch_query.to_lowercase();
+    let query = state.branch_query.value.to_lowercase();
     state.matches = state
         .branch_rows
         .iter()
@@ -569,11 +478,11 @@ fn handle_mode_select_event(state: &mut AddUiState, key: KeyEvent) -> Result<boo
             return Ok(true);
         }
         KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => match c {
-            'p' | 'k' => {
+            'p' => {
                 state.branch_tab = BranchTab::New;
                 return Ok(true);
             }
-            'n' | 'j' => {
+            'n' => {
                 state.branch_tab = BranchTab::Existing;
                 return Ok(true);
             }
@@ -609,9 +518,29 @@ fn handle_branch_step_event(
         }
         KeyCode::Up => state.move_branch_up(),
         KeyCode::Down => state.move_branch_down(),
+        KeyCode::Home => {
+            if search_enabled {
+                state.branch_query.move_to_start();
+            }
+        }
+        KeyCode::End => {
+            if search_enabled {
+                state.branch_query.move_to_end();
+            }
+        }
+        KeyCode::Left => {
+            if search_enabled {
+                state.branch_query.move_left();
+            }
+        }
+        KeyCode::Right => {
+            if search_enabled {
+                state.branch_query.move_right();
+            }
+        }
         KeyCode::Backspace => {
             if search_enabled {
-                state.branch_query.pop();
+                state.branch_query.backspace();
                 filter_branch_rows(state);
             }
         }
@@ -650,18 +579,56 @@ fn handle_branch_step_event(
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match c {
-                    'p' | 'k' => state.move_branch_up(),
-                    'n' | 'j' => state.move_branch_down(),
+                    'p' => state.move_branch_up(),
+                    'n' => state.move_branch_down(),
+                    'a' => {
+                        if search_enabled {
+                            state.branch_query.move_to_start();
+                        }
+                    }
+                    'e' => {
+                        if search_enabled {
+                            state.branch_query.move_to_end();
+                        }
+                    }
+                    'f' => {
+                        if search_enabled {
+                            state.branch_query.move_right();
+                        }
+                    }
+                    'b' => {
+                        if search_enabled {
+                            state.branch_query.move_left();
+                        }
+                    }
+                    'd' => {
+                        if search_enabled {
+                            state.branch_query.delete_char();
+                            filter_branch_rows(state);
+                        }
+                    }
+                    'k' => {
+                        if search_enabled {
+                            state.branch_query.kill_to_end();
+                            filter_branch_rows(state);
+                        }
+                    }
                     'u' => {
                         if search_enabled {
                             state.branch_query.clear();
                             filter_branch_rows(state);
                         }
                     }
+                    'w' => {
+                        if search_enabled {
+                            state.branch_query.delete_word_backward();
+                            filter_branch_rows(state);
+                        }
+                    }
                     _ => {}
                 }
             } else if search_enabled {
-                state.branch_query.push(c);
+                state.branch_query.insert_char(c);
                 filter_branch_rows(state);
             }
         }
@@ -694,8 +661,12 @@ fn handle_new_base_select_event(
         }
         KeyCode::Up => state.move_branch_up(),
         KeyCode::Down => state.move_branch_down(),
+        KeyCode::Home => state.branch_query.move_to_start(),
+        KeyCode::End => state.branch_query.move_to_end(),
+        KeyCode::Left => state.branch_query.move_left(),
+        KeyCode::Right => state.branch_query.move_right(),
         KeyCode::Backspace => {
-            state.branch_query.pop();
+            state.branch_query.backspace();
             filter_branch_rows(state);
         }
         KeyCode::Enter => {
@@ -714,16 +685,32 @@ fn handle_new_base_select_event(
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match c {
-                    'p' | 'k' => state.move_branch_up(),
-                    'n' | 'j' => state.move_branch_down(),
+                    'p' => state.move_branch_up(),
+                    'n' => state.move_branch_down(),
+                    'a' => state.branch_query.move_to_start(),
+                    'e' => state.branch_query.move_to_end(),
+                    'f' => state.branch_query.move_right(),
+                    'b' => state.branch_query.move_left(),
+                    'd' => {
+                        state.branch_query.delete_char();
+                        filter_branch_rows(state);
+                    }
+                    'k' => {
+                        state.branch_query.kill_to_end();
+                        filter_branch_rows(state);
+                    }
                     'u' => {
                         state.branch_query.clear();
+                        filter_branch_rows(state);
+                    }
+                    'w' => {
+                        state.branch_query.delete_word_backward();
                         filter_branch_rows(state);
                     }
                     _ => {}
                 }
             } else {
-                state.branch_query.push(c);
+                state.branch_query.insert_char(c);
                 filter_branch_rows(state);
             }
         }
@@ -778,6 +765,12 @@ fn handle_commit_input_event(
                     }
                     'a' => state.commit_input.move_to_start(),
                     'e' => state.commit_input.move_to_end(),
+                    'f' => state.commit_input.move_right(),
+                    'b' => state.commit_input.move_left(),
+                    'd' => {
+                        state.commit_input.delete_char();
+                        state.commit_error = None;
+                    }
                     'k' => {
                         state.commit_input.kill_to_end();
                         state.commit_error = None;
@@ -843,6 +836,12 @@ fn handle_branch_name_event(
                     }
                     'a' => state.branch_name_input.move_to_start(),
                     'e' => state.branch_name_input.move_to_end(),
+                    'f' => state.branch_name_input.move_right(),
+                    'b' => state.branch_name_input.move_left(),
+                    'd' => {
+                        state.branch_name_input.delete_char();
+                        update_branch_name_validation(state, input);
+                    }
                     'k' => {
                         state.branch_name_input.kill_to_end();
                         update_branch_name_validation(state, input);
@@ -899,6 +898,9 @@ fn handle_path_event(
                     'u' => state.path_input.clear(),
                     'a' => state.path_input.move_to_start(),
                     'e' => state.path_input.move_to_end(),
+                    'f' => state.path_input.move_right(),
+                    'b' => state.path_input.move_left(),
+                    'd' => state.path_input.delete_char(),
                     'k' => state.path_input.kill_to_end(),
                     'w' => state.path_input.delete_word_backward(),
                     _ => {}
@@ -1012,20 +1014,18 @@ fn build_context(state: &AddUiState) -> Option<String> {
 /// Get key hints for footer based on current step
 fn get_footer_hints(state: &AddUiState) -> &'static str {
     match state.step {
-        AddStep::ModeSelect => {
-            "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  [Esc] cancel  [F1] help"
-        }
+        AddStep::ModeSelect => "[Enter] select  [Up/Down/Ctrl+P/N] move  [Esc] cancel  [F1] help",
         AddStep::Branch => {
             let search_enabled = !(state.branch_tab == BranchTab::New
                 && state.branch_purpose == BranchPurpose::UseExisting);
             if search_enabled {
-                "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
+                "[Enter] select  [Up/Down/Ctrl+P/N] move  type: search  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
             } else {
-                "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
+                "[Enter] select  [Up/Down/Ctrl+P/N] move  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
             }
         }
         AddStep::NewBaseSelect => {
-            "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
+            "[Enter] select  [Up/Down/Ctrl+P/N] move  type: search  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
         }
         AddStep::NewCommitInput | AddStep::NewBranchName | AddStep::Path => {
             "[Enter/Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
@@ -1120,7 +1120,7 @@ fn draw_branch_step(
         let search_line = Line::from(vec![
             Span::styled("", input.theme.search_style()),
             Span::styled(
-                &state.branch_query,
+                &state.branch_query.value,
                 input.theme.search_style().add_modifier(Modifier::BOLD),
             ),
         ]);
@@ -1668,20 +1668,6 @@ fn set_input_cursor(
     frame.set_cursor_position((x, y));
 }
 
-fn set_search_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, query: &str) {
-    let padding_left = 1u16;
-    let padding_top = 0u16;
-    // Calculate display width using unicode-width
-    let x_offset = query.width();
-    let x = area
-        .x
-        .saturating_add(1)
-        .saturating_add(padding_left)
-        .saturating_add(x_offset as u16);
-    let y = area.y.saturating_add(1).saturating_add(padding_top);
-    frame.set_cursor_position((x, y));
-}
-
 #[cfg(all(test, feature = "impure-test"))]
 mod tests {
     use super::*;
@@ -1911,7 +1897,7 @@ mod tests {
         assert_eq!(state.step, AddStep::ModeSelect);
         assert_eq!(state.branch_tab, BranchTab::New);
         assert_eq!(state.branch_cursor, 0);
-        assert!(state.branch_query.is_empty());
+        assert!(state.branch_query.value.is_empty());
         assert!(state.selected_branch.is_none());
     }
 
@@ -2334,7 +2320,7 @@ mod tests {
                 in_use_by: None,
             }),
         ];
-        state.branch_query = String::new();
+        state.branch_query = TextInputState::new(String::new());
 
         filter_branch_rows(&mut state);
 
@@ -2355,7 +2341,7 @@ mod tests {
                 in_use_by: None,
             }),
         ];
-        state.branch_query = "feat".to_string();
+        state.branch_query = TextInputState::new("feat".to_string());
 
         filter_branch_rows(&mut state);
 
@@ -2374,7 +2360,7 @@ mod tests {
             name: "Feature/Test".to_string(),
             in_use_by: None,
         })];
-        state.branch_query = "FEATURE".to_string();
+        state.branch_query = TextInputState::new("FEATURE".to_string());
 
         filter_branch_rows(&mut state);
 
