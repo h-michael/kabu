@@ -407,8 +407,11 @@ fn run_setup(
     }
 
     // Process symlinks (expand glob patterns first)
+    // Cache the VCS-tracked file list across all glob link entries so we only
+    // invoke `git ls-files` (or jj equivalent) at most once per `add` call.
+    let mut tracked_cache: Option<TrackedCache> = None;
     for link in &config.link {
-        let expanded_links = expand_link(link, repo_root, provider)?;
+        let expanded_links = expand_link(link, repo_root, provider, &mut tracked_cache)?;
         for expanded_link in expanded_links {
             let params = OperationParams {
                 source: &repo_root.join(&expanded_link.source),
@@ -535,9 +538,61 @@ fn contains_glob_pattern(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Return the longest leading sequence of path components that contain no
+/// glob meta-characters. Used to start a `WalkDir` from the deepest known
+/// directory instead of `repo_root`, which avoids stat()-ing unrelated
+/// subtrees such as build caches or `node_modules`.
+fn glob_literal_prefix(pattern: &Path) -> PathBuf {
+    let mut prefix = PathBuf::new();
+    for component in pattern.components() {
+        let s = component.as_os_str().to_string_lossy();
+        if s.contains('*') || s.contains('?') || s.contains('[') {
+            break;
+        }
+        prefix.push(component);
+    }
+    prefix
+}
+
+/// Cached VCS-tracked file/directory set, reused across all glob link entries
+/// that opt into `skip_tracked: true`.
+struct TrackedCache {
+    files: HashSet<PathBuf>,
+    dirs: HashSet<PathBuf>,
+}
+
+impl TrackedCache {
+    fn build(provider: &dyn VcsProvider, repo_root: &Path) -> Result<Self> {
+        let files: HashSet<PathBuf> = provider
+            .list_tracked_files(repo_root)?
+            .into_iter()
+            .collect();
+        // `git ls-files` (and the jj equivalent) only emit file paths, so
+        // synthesize the set of directories that contain tracked files. This
+        // lets us skip a whole directory when a glob matches it.
+        let mut dirs = HashSet::new();
+        for f in &files {
+            let mut parent = f.parent();
+            while let Some(p) = parent {
+                if p.as_os_str().is_empty() {
+                    break;
+                }
+                dirs.insert(p.to_path_buf());
+                parent = p.parent();
+            }
+        }
+        Ok(Self { files, dirs })
+    }
+}
+
 /// Expand a link entry with glob patterns into multiple concrete link entries.
 /// If skip_tracked is true, filter out VCS-tracked files.
-fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Result<Vec<Link>> {
+fn expand_link(
+    link: &Link,
+    repo_root: &Path,
+    provider: &dyn VcsProvider,
+    tracked_cache: &mut Option<TrackedCache>,
+) -> Result<Vec<Link>> {
     let source_str = link.source.to_string_lossy();
 
     if !contains_glob_pattern(&link.source) {
@@ -554,34 +609,22 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
         })?;
     let matcher = glob.compile_matcher();
 
-    // Get VCS-tracked files if needed
-    let tracked_files: HashSet<PathBuf> = if link.skip_tracked {
-        provider
-            .list_tracked_files(repo_root)?
-            .into_iter()
-            .collect()
-    } else {
-        HashSet::new()
-    };
+    // Walk only the literal prefix of the pattern so we don't descend into
+    // unrelated trees (e.g. `rust/target`, `node_modules`) just to discard
+    // them after a glob-match check.
+    let prefix = glob_literal_prefix(&link.source);
+    let walk_root = repo_root.join(&prefix);
+    if !walk_root.exists() {
+        return Ok(Vec::new());
+    }
 
-    // Build a set of directories that contain tracked files.
-    // git ls-files only returns file paths, so directories themselves won't appear
-    // in tracked_files. We need this to skip directories whose contents are tracked.
-    let tracked_dirs: HashSet<PathBuf> = if link.skip_tracked {
-        let mut dirs = HashSet::new();
-        for f in &tracked_files {
-            let mut parent = f.parent();
-            while let Some(p) = parent {
-                if p.as_os_str().is_empty() {
-                    break;
-                }
-                dirs.insert(p.to_path_buf());
-                parent = p.parent();
-            }
+    let tracked = if link.skip_tracked {
+        if tracked_cache.is_none() {
+            *tracked_cache = Some(TrackedCache::build(provider, repo_root)?);
         }
-        dirs
+        tracked_cache.as_ref()
     } else {
-        HashSet::new()
+        None
     };
 
     // Walk the repository and find matching files and directories
@@ -589,7 +632,7 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
     let mut matched_dirs: HashSet<PathBuf> = HashSet::new();
     let mut results = Vec::new();
 
-    for entry in walkdir::WalkDir::new(repo_root)
+    for entry in walkdir::WalkDir::new(&walk_root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| e.file_name() != ".git")
@@ -620,20 +663,24 @@ fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Res
             continue;
         }
 
+        // `entry.file_type()` reads from the dirent cached by walkdir and
+        // avoids the extra stat() that `path.is_dir()` would issue.
+        let is_dir = entry.file_type().is_dir();
+
         // Skip if it's tracked and skip_tracked is true
-        if link.skip_tracked {
-            if tracked_files.contains(rel_path) {
+        if let Some(cache) = tracked {
+            if cache.files.contains(rel_path) {
                 continue;
             }
             // Directories containing tracked files should also be skipped,
             // as git ls-files only returns file paths, not directory paths
-            if path.is_dir() && tracked_dirs.contains(rel_path) {
+            if is_dir && cache.dirs.contains(rel_path) {
                 continue;
             }
         }
 
         // If it's a directory, add to matched_dirs to skip its contents
-        if path.is_dir() {
+        if is_dir {
             matched_dirs.insert(rel_path.to_path_buf());
         }
 
@@ -664,10 +711,16 @@ fn expand_copy(copy: &config::Copy, repo_root: &Path) -> Result<Vec<config::Copy
         })?;
     let matcher = glob.compile_matcher();
 
+    let prefix = glob_literal_prefix(&copy.source);
+    let walk_root = repo_root.join(&prefix);
+    if !walk_root.exists() {
+        return Ok(Vec::new());
+    }
+
     let mut matched_dirs: HashSet<PathBuf> = HashSet::new();
     let mut results = Vec::new();
 
-    for entry in walkdir::WalkDir::new(repo_root)
+    for entry in walkdir::WalkDir::new(&walk_root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| e.file_name() != ".git")
@@ -695,7 +748,7 @@ fn expand_copy(copy: &config::Copy, repo_root: &Path) -> Result<Vec<config::Copy
             continue;
         }
 
-        if path.is_dir() {
+        if entry.file_type().is_dir() {
             matched_dirs.insert(rel_path.to_path_buf());
         }
 
@@ -731,6 +784,52 @@ mod tests {
     fn test_contains_glob_pattern_none() {
         assert!(!contains_glob_pattern(Path::new("secrets/config.json")));
     }
+
+    #[test]
+    fn test_glob_literal_prefix_trailing_wildcard() {
+        assert_eq!(
+            glob_literal_prefix(Path::new(".claude/*")),
+            PathBuf::from(".claude")
+        );
+        assert_eq!(
+            glob_literal_prefix(Path::new("script/stub-server/certs/*")),
+            PathBuf::from("script/stub-server/certs")
+        );
+    }
+
+    #[test]
+    fn test_glob_literal_prefix_wildcard_in_first_component() {
+        assert_eq!(glob_literal_prefix(Path::new("dir*")), PathBuf::new());
+        assert_eq!(glob_literal_prefix(Path::new("**/*.rs")), PathBuf::new());
+    }
+
+    #[test]
+    fn test_glob_literal_prefix_wildcard_in_middle() {
+        assert_eq!(
+            glob_literal_prefix(Path::new("foo/*/bar")),
+            PathBuf::from("foo")
+        );
+    }
+
+    #[test]
+    fn test_glob_literal_prefix_no_wildcard() {
+        assert_eq!(
+            glob_literal_prefix(Path::new("a/b/c.txt")),
+            PathBuf::from("a/b/c.txt")
+        );
+    }
+
+    #[test]
+    fn test_glob_literal_prefix_question_and_bracket() {
+        assert_eq!(
+            glob_literal_prefix(Path::new("a/b/file?.txt")),
+            PathBuf::from("a/b")
+        );
+        assert_eq!(
+            glob_literal_prefix(Path::new("a/b/file[0-9].txt")),
+            PathBuf::from("a/b")
+        );
+    }
 }
 
 #[cfg(all(test, feature = "impure-test"))]
@@ -755,7 +854,7 @@ mod impure_tests {
         };
 
         let provider = vcs::GitProvider;
-        let result = expand_link(&link, repo_root, &provider).unwrap();
+        let result = expand_link(&link, repo_root, &provider, &mut None).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].source, PathBuf::from("test.txt"));
     }
@@ -781,7 +880,7 @@ mod impure_tests {
         };
 
         let provider = vcs::GitProvider;
-        let result = expand_link(&link, repo_root, &provider).unwrap();
+        let result = expand_link(&link, repo_root, &provider, &mut None).unwrap();
         assert_eq!(result.len(), 2);
 
         let mut sources: Vec<_> = result.iter().map(|l| l.source.clone()).collect();
@@ -854,7 +953,7 @@ mod impure_tests {
         };
 
         let provider = vcs::GitProvider;
-        let result = expand_link(&link, repo_root, &provider).unwrap();
+        let result = expand_link(&link, repo_root, &provider, &mut None).unwrap();
 
         // Should only include untracked file
         // Note: This test may be flaky in some environments
@@ -941,7 +1040,7 @@ mod impure_tests {
         };
 
         let provider = vcs::GitProvider;
-        let result = expand_link(&link, repo_root, &provider).unwrap();
+        let result = expand_link(&link, repo_root, &provider, &mut None).unwrap();
 
         // Should skip tracked-dir (directory containing tracked files)
         // and include untracked-dir and untracked-file.txt
@@ -979,7 +1078,7 @@ mod impure_tests {
         };
 
         let provider = vcs::GitProvider;
-        let result = expand_link(&link, repo_root, &provider).unwrap();
+        let result = expand_link(&link, repo_root, &provider, &mut None).unwrap();
 
         // Should return only the directory, not its contents
         assert_eq!(result.len(), 1);
@@ -1010,7 +1109,7 @@ mod impure_tests {
         };
 
         let provider = vcs::GitProvider;
-        let result = expand_link(&link, repo_root, &provider).unwrap();
+        let result = expand_link(&link, repo_root, &provider, &mut None).unwrap();
 
         // Should return only the directories, not their contents
         assert_eq!(result.len(), 2);

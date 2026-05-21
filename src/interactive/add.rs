@@ -518,31 +518,21 @@ fn handle_branch_step_event(
         }
         KeyCode::Up => state.move_branch_up(),
         KeyCode::Down => state.move_branch_down(),
-        KeyCode::Home => {
-            if search_enabled {
-                state.branch_query.move_to_start();
-            }
+        KeyCode::Home if search_enabled => {
+            state.branch_query.move_to_start();
         }
-        KeyCode::End => {
-            if search_enabled {
-                state.branch_query.move_to_end();
-            }
+        KeyCode::End if search_enabled => {
+            state.branch_query.move_to_end();
         }
-        KeyCode::Left => {
-            if search_enabled {
-                state.branch_query.move_left();
-            }
+        KeyCode::Left if search_enabled => {
+            state.branch_query.move_left();
         }
-        KeyCode::Right => {
-            if search_enabled {
-                state.branch_query.move_right();
-            }
+        KeyCode::Right if search_enabled => {
+            state.branch_query.move_right();
         }
-        KeyCode::Backspace => {
-            if search_enabled {
-                state.branch_query.backspace();
-                filter_branch_rows(state);
-            }
+        KeyCode::Backspace if search_enabled => {
+            state.branch_query.backspace();
+            filter_branch_rows(state);
         }
         KeyCode::Enter => {
             if let Some(row) = state.current_branch_row().cloned() {
@@ -581,49 +571,33 @@ fn handle_branch_step_event(
                 match c {
                     'p' => state.move_branch_up(),
                     'n' => state.move_branch_down(),
-                    'a' => {
-                        if search_enabled {
-                            state.branch_query.move_to_start();
-                        }
+                    'a' if search_enabled => {
+                        state.branch_query.move_to_start();
                     }
-                    'e' => {
-                        if search_enabled {
-                            state.branch_query.move_to_end();
-                        }
+                    'e' if search_enabled => {
+                        state.branch_query.move_to_end();
                     }
-                    'f' => {
-                        if search_enabled {
-                            state.branch_query.move_right();
-                        }
+                    'f' if search_enabled => {
+                        state.branch_query.move_right();
                     }
-                    'b' => {
-                        if search_enabled {
-                            state.branch_query.move_left();
-                        }
+                    'b' if search_enabled => {
+                        state.branch_query.move_left();
                     }
-                    'd' => {
-                        if search_enabled {
-                            state.branch_query.delete_char();
-                            filter_branch_rows(state);
-                        }
+                    'd' if search_enabled => {
+                        state.branch_query.delete_char();
+                        filter_branch_rows(state);
                     }
-                    'k' => {
-                        if search_enabled {
-                            state.branch_query.kill_to_end();
-                            filter_branch_rows(state);
-                        }
+                    'k' if search_enabled => {
+                        state.branch_query.kill_to_end();
+                        filter_branch_rows(state);
                     }
-                    'u' => {
-                        if search_enabled {
-                            state.branch_query.clear();
-                            filter_branch_rows(state);
-                        }
+                    'u' if search_enabled => {
+                        state.branch_query.clear();
+                        filter_branch_rows(state);
                     }
-                    'w' => {
-                        if search_enabled {
-                            state.branch_query.delete_word_backward();
-                            filter_branch_rows(state);
-                        }
+                    'w' if search_enabled => {
+                        state.branch_query.delete_word_backward();
+                        filter_branch_rows(state);
                     }
                     _ => {}
                 }
@@ -726,11 +700,9 @@ fn handle_commit_input_event(
 ) -> Result<bool> {
     match key.code {
         KeyCode::Esc => return Err(Error::Aborted),
-        KeyCode::Tab => {
-            if validate_commit_input(state) {
-                state.new_branch_origin = Some(NewBranchOrigin::Commit);
-                state.step = AddStep::NewBranchName;
-            }
+        KeyCode::Tab if validate_commit_input(state) => {
+            state.new_branch_origin = Some(NewBranchOrigin::Commit);
+            state.step = AddStep::NewBranchName;
         }
         KeyCode::BackTab => {
             state.commit_input.clear();
@@ -750,11 +722,9 @@ fn handle_commit_input_event(
             state.commit_input.backspace();
             state.commit_error = None;
         }
-        KeyCode::Enter => {
-            if validate_commit_input(state) {
-                state.new_branch_origin = Some(NewBranchOrigin::Commit);
-                state.step = AddStep::NewBranchName;
-            }
+        KeyCode::Enter if validate_commit_input(state) => {
+            state.new_branch_origin = Some(NewBranchOrigin::Commit);
+            state.step = AddStep::NewBranchName;
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
