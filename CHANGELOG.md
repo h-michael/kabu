@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0](https://github.com/h-michael/kabu/compare/v0.6.0..v0.7.0) - 2026-05-25
+
+
+- **feat**: [**breaking**] Add Emacs keybindings to all search fields - ([1ae70ad](https://github.com/h-michael/kabu/commit/1ae70adb4a7fe4708087353b305462d5e76d4bae))
+- **fix**(add): Walk only the glob's literal prefix and cache tracked files - ([916afda](https://github.com/h-michael/kabu/commit/916afda03b34875f482400b70d2d2ac1c677b813))
+- **chore**(ci): Bump orhun/git-cliff-action from 4.7.1 to 4.8.0 - ([1c34c1f](https://github.com/h-michael/kabu/commit/1c34c1f088a5d6555b6cd5f0aab700398bde2ba1))
+- **chore**(ci): Bump softprops/action-gh-release from 2.6.1 to 3.0.0 - ([80b2070](https://github.com/h-michael/kabu/commit/80b2070651524e46aa0d939db71797f894138427))
+- **chore**(ci): Bump taiki-e/upload-rust-binary-action from 1.29.1 to 1.30.2 - ([c20793a](https://github.com/h-michael/kabu/commit/c20793ab8fb8cf5093dfa80262cdfc4773d337a5))
+- **chore**(ci): Bump actions/cache from 5.0.4 to 5.0.5 - ([882821f](https://github.com/h-michael/kabu/commit/882821fa59b08e8ddf957df746ca8b9cdc3db4e7))
+- **chore**(ci): Bump EmbarkStudios/cargo-deny-action from 2.0.15 to 2.0.17 - ([188f55c](https://github.com/h-michael/kabu/commit/188f55c75abf091c2bca98df0a89cc9a4c2e4d53))
 ## [0.6.0](https://github.com/h-michael/kabu/compare/v0.5.0..v0.6.0) - 2026-04-05
 
 
