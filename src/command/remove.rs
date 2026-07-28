@@ -98,6 +98,12 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
             .unwrap_or("")
             .to_string();
 
+        let branch = worktrees
+            .iter()
+            .find(|wt| &wt.path == path)
+            .and_then(|wt| wt.branch.as_deref())
+            .map(|b| b.strip_prefix("refs/heads/").unwrap_or(b).to_string());
+
         let hook_shell = {
             #[cfg(windows)]
             {
@@ -114,7 +120,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
         let hook_env = HookEnv {
             worktree_path: path.to_string_lossy().to_string(),
             worktree_name,
-            branch: None, // Branch info not available for remove
+            branch,
             repo_root: main_worktree_path.to_string_lossy().to_string(),
             vcs_type: provider.name().to_string(),
             change_id: None,
