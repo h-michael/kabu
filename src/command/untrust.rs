@@ -19,7 +19,7 @@ pub(crate) fn run(args: UntrustArgs) -> Result<()> {
     let provider = vcs::get_provider()?;
     let repo_root = match args.path {
         Some(p) => p.canonicalize()?,
-        None => provider.repository_root()?,
+        None => provider.main_workspace_root()?,
     };
 
     let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;

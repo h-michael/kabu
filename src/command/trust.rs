@@ -13,7 +13,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
                 if !provider.is_inside_repo() {
                     return Ok(());
                 }
-                provider.repository_root()?
+                provider.main_workspace_root()?
             }
         };
 
@@ -37,7 +37,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
 
     let repo_root = match args.path {
         Some(p) => p.canonicalize()?,
-        None => provider.repository_root()?,
+        None => provider.main_workspace_root()?,
     };
 
     let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;

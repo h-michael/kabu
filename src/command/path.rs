@@ -16,8 +16,7 @@ pub(crate) fn run(args: PathArgs) -> Result<()> {
     }
 
     if args.main {
-        let repo_root = provider.repository_root()?;
-        let main_path = provider.main_workspace_path_for(&repo_root)?;
+        let main_path = provider.main_workspace_root()?;
         println!("{}", main_path.display());
     } else {
         let workspaces = provider.list_workspaces()?;

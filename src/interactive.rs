@@ -281,7 +281,7 @@ fn render_breadcrumb_line<'a>(
 
 pub(crate) fn resolve_ui_theme() -> Result<UiTheme> {
     let provider = vcs::get_provider()?;
-    let repo_root = provider.repository_root()?;
+    let repo_root = provider.main_workspace_root()?;
     let config = config::load(&repo_root)?.unwrap_or_default();
     Ok(UiTheme::from_ui(&config.ui))
 }

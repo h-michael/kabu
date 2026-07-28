@@ -24,17 +24,9 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
         return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = provider.repository_root()?;
+    let repo_root = provider.main_workspace_root()?;
 
-    // Get main workspace path for trust operations
-    let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
-
-    let config = load_config_with_trust_check(
-        &main_worktree_path,
-        &main_worktree_path,
-        true,
-        TrustHint::None,
-    )?;
+    let config = load_config_with_trust_check(&repo_root, &repo_root, true, TrustHint::None)?;
     color::set_cli_theme(&config.ui.colors);
 
     let worktrees = provider.list_workspaces()?;
@@ -121,7 +113,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
             worktree_path: path.to_string_lossy().to_string(),
             worktree_name,
             branch,
-            repo_root: main_worktree_path.to_string_lossy().to_string(),
+            repo_root: repo_root.to_string_lossy().to_string(),
             vcs_type: provider.name().to_string(),
             change_id: None,
             commit_id: None,
@@ -154,7 +146,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
                     hook::dry_run_hooks("post_remove", &config.hooks.post_remove, &output);
                 }
             } else if let Err(e) =
-                hook::run_post_remove(&config.hooks, &hook_env, &main_worktree_path, &output)
+                hook::run_post_remove(&config.hooks, &hook_env, &repo_root, &output)
             {
                 // Extract exit code from error if available
                 let exit_code = match &e {

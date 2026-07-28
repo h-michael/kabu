@@ -97,12 +97,12 @@ pub(crate) trait VcsProvider {
     /// Check if currently inside a repository of this VCS type.
     fn is_inside_repo(&self) -> bool;
 
-    /// Get the repository root directory.
-    fn repository_root(&self) -> Result<PathBuf>;
+    /// Get the main worktree/workspace's root directory.
+    fn main_workspace_root(&self) -> Result<PathBuf>;
 
     /// Get the repository name (directory name of repo root).
     fn repository_name(&self) -> Result<String> {
-        let root = self.repository_root()?;
+        let root = self.main_workspace_root()?;
         root.file_name()
             .and_then(|n| n.to_str())
             .map(|s| s.to_string())

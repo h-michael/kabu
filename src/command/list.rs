@@ -30,7 +30,7 @@ pub(crate) fn run(args: ListArgs, color: ColorConfig) -> Result<()> {
         return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = provider.repository_root()?;
+    let repo_root = provider.main_workspace_root()?;
     if let Ok(config) = config::load_merged(&repo_root) {
         color::set_cli_theme(&config.ui.colors);
     }

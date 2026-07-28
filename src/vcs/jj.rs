@@ -26,8 +26,8 @@ impl VcsProvider for JjProvider {
         is_inside_repo()
     }
 
-    fn repository_root(&self) -> Result<PathBuf> {
-        repository_root()
+    fn main_workspace_root(&self) -> Result<PathBuf> {
+        main_workspace_root()
     }
 
     fn main_workspace_path_for(&self, repo_root: &Path) -> Result<PathBuf> {
@@ -111,12 +111,12 @@ fn is_colocated() -> bool {
     false
 }
 
-/// Get the repository root directory.
+/// Get the main workspace's root directory.
 ///
 /// In jj, this returns the path of the "default" workspace, which is the main
 /// repository location. This is different from `jj root` which returns the
 /// current workspace's root.
-pub(crate) fn repository_root() -> Result<PathBuf> {
+pub(crate) fn main_workspace_root() -> Result<PathBuf> {
     // First, get the current workspace root
     let output = Command::new("jj").args(["root"]).output()?;
 
@@ -361,7 +361,7 @@ fn find_repo_root_from_workspace(workspace_path: &Path) -> Result<PathBuf> {
 
 /// List all workspaces.
 pub(crate) fn list_workspaces() -> Result<Vec<WorkspaceInfo>> {
-    let repo_root = repository_root()?;
+    let repo_root = main_workspace_root()?;
     list_workspaces_at(&repo_root)
 }
 
