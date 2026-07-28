@@ -32,12 +32,9 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     // Get repository root
     let repo_root = provider.main_workspace_root()?;
 
-    // Get main workspace path for trust operations
-    let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
-
     let config = load_config_with_trust_check(
         &repo_root,
-        &main_worktree_path,
+        &repo_root,
         !args.no_setup,
         TrustHint::SkipHooks {
             command: "kabu add --no-setup <path>",
