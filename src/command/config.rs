@@ -48,7 +48,7 @@ fn validate() -> Result<()> {
         return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = provider.repository_root()?;
+    let repo_root = provider.main_workspace_root()?;
     config::load(&repo_root)?;
 
     println!("Config is valid");
@@ -62,7 +62,7 @@ fn get_config_value(key: &str) -> Result<()> {
         return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = provider.repository_root()?;
+    let repo_root = provider.main_workspace_root()?;
     let cfg = config::load_merged(&repo_root)?;
 
     match key {
@@ -125,7 +125,7 @@ fn new_config(
         return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = provider.repository_root()?;
+    let repo_root = provider.main_workspace_root()?;
     let kabu_dir = repo_root.join(config::CONFIG_DIR_NAME);
     let (config_file_name, other_format_name) = match format {
         ConfigFormatArg::Yaml => (config::CONFIG_FILE_NAME_YAML, config::CONFIG_FILE_NAME_TOML),

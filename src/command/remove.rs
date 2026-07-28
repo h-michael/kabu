@@ -24,7 +24,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
         return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = provider.repository_root()?;
+    let repo_root = provider.main_workspace_root()?;
 
     // Get main workspace path for trust operations
     let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;

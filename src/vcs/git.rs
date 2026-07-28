@@ -21,8 +21,8 @@ impl VcsProvider for GitProvider {
         is_inside_repo()
     }
 
-    fn repository_root(&self) -> Result<PathBuf> {
-        repository_root()
+    fn main_workspace_root(&self) -> Result<PathBuf> {
+        main_workspace_root()
     }
 
     fn main_workspace_path_for(&self, repo_root: &Path) -> Result<PathBuf> {
@@ -138,13 +138,13 @@ pub(crate) fn worktree_add(args: &AddArgs, path: &std::path::Path) -> Result<()>
     Ok(())
 }
 
-/// Get the repository root directory.
+/// Get the main worktree's root directory.
 ///
 /// This always returns the main worktree's path, matching the jj backend's
 /// contract. `git rev-parse --show-toplevel` returns the toplevel of whichever
 /// worktree the command runs from, so callers inside a linked worktree are
 /// redirected to the main worktree here.
-pub(crate) fn repository_root() -> Result<PathBuf> {
+pub(crate) fn main_workspace_root() -> Result<PathBuf> {
     let output = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()?;
