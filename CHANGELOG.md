@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.1](https://github.com/h-michael/kabu/compare/v0.7.0..v0.7.1) - 2026-07-28
+
+
+- **chore**(ci): Bump EmbarkStudios/cargo-deny-action from 2.0.17 to 2.0.20 - ([1f800c0](https://github.com/h-michael/kabu/commit/1f800c0ab7fa88034438c306ec028fafcb636b71))
+- **chore**(ci): Bump docker/setup-buildx-action from 4.0.0 to 4.1.0 - ([3ea11cd](https://github.com/h-michael/kabu/commit/3ea11cd41a82aa18a4154fa7555586c04b77fdea))
+- **chore**(ci): Bump actions/checkout from 6.0.2 to 6.0.3 - ([00bc31a](https://github.com/h-michael/kabu/commit/00bc31a4bb94168ca7c6e674cb30aa9a03d4baf0))
+- **chore**(ci): Bump actions/cache from 5.0.5 to 6.0.0 - ([0b89fb4](https://github.com/h-michael/kabu/commit/0b89fb4e4e9b63064be14c30f2bb1c41c77d9823))
+- **chore**(ci): Bump softprops/action-gh-release from 3.0.0 to 3.0.1 - ([764e3e0](https://github.com/h-michael/kabu/commit/764e3e0097fb2482fee553b93a63ee8b17c1ce1f))
+- **chore**(ci): Bump actions/checkout from 6.0.3 to 7.0.0 - ([f649985](https://github.com/h-michael/kabu/commit/f649985c8986304cf4ba0e2459430c4cc9d489a6))
+- **chore**(ci): Bump rust-lang/crates-io-auth-action from 1.0.4 to 1.0.5 - ([8b11697](https://github.com/h-michael/kabu/commit/8b1169754d2a076ff74343671ed7f2132eea0e85))
+- **chore**(ci): Bump docker/setup-buildx-action from 4.1.0 to 4.2.0 - ([eaaa003](https://github.com/h-michael/kabu/commit/eaaa003a23bf0865f1112805c5b398d4dba83d52))
+- **chore**(ci): Bump actions/cache from 6.0.0 to 6.1.0 - ([ca6826f](https://github.com/h-michael/kabu/commit/ca6826f4a40fdbd59ed5232c7b6bf0f47e8bd3ab))
+- **fix**(deps): Update crossbeam-epoch to fix RUSTSEC-2026-0204 - ([eed36b3](https://github.com/h-michael/kabu/commit/eed36b3d19a604c3f304df57b3767ca93a8938a0))
+- **fix**(hooks): Load config from main worktree, not current one - ([c5d4af7](https://github.com/h-michael/kabu/commit/c5d4af77423246aca182ce9ed6f197fb05c52091))
+- **fix**(hooks): Run post_remove hooks in main worktree - ([1109cb6](https://github.com/h-michael/kabu/commit/1109cb6ccbf7dab0bdffe909732ec3214f942d5d))
+- **fix**(hooks): Populate KABU_BRANCH for remove hooks - ([4e17313](https://github.com/h-michael/kabu/commit/4e173132739ff140a8df8d4f848049de0ae0a0d2))
+- **chore**(ci): Bump EmbarkStudios/cargo-deny-action from 2.0.20 to 2.1.1 - ([0c861bc](https://github.com/h-michael/kabu/commit/0c861bc83883572ce499f5db024b6ff2e50c74ab))
+- **chore**(ci): Bump softprops/action-gh-release from 3.0.1 to 3.0.2 - ([ab10721](https://github.com/h-michael/kabu/commit/ab10721adcff29138258c059458c33bdb4b27a63))
+- **chore**(ci): Bump actions/checkout from 7.0.0 to 7.0.1 - ([0bc09f6](https://github.com/h-michael/kabu/commit/0bc09f6ccc769b53e79e5108e7d7ab6c05070e52))
+- **fix**(vcs): Make git repository_root resolve the main worktree - ([1b2d556](https://github.com/h-michael/kabu/commit/1b2d55657a6e98c5ae14fcf127c9bb71bf61886d))
+- **refactor**(vcs): Rename repository_root to main_workspace_root - ([2738494](https://github.com/h-michael/kabu/commit/27384941b87b2abef21c30d754d8e63d7efc03be))
+- **refactor**: Drop redundant main_workspace_path_for calls - ([3628063](https://github.com/h-michael/kabu/commit/36280630dc30725c2519ce1c1dd355a4eb13db00))
+- **fix**(trust): Resolve explicit paths to the main worktree - ([97b16eb](https://github.com/h-michael/kabu/commit/97b16eb1ad142ace06a127feae39b5c42e8e5ad0))
 ## [0.7.0](https://github.com/h-michael/kabu/compare/v0.6.0..v0.7.0) - 2026-05-25
 
 
