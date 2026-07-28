@@ -18,17 +18,15 @@ pub(crate) fn run(args: UntrustArgs) -> Result<()> {
 
     let provider = vcs::get_provider()?;
     let repo_root = match args.path {
-        Some(p) => p.canonicalize()?,
+        Some(p) => provider.main_workspace_path_for(&p.canonicalize()?)?,
         None => provider.main_workspace_root()?,
     };
-
-    let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
 
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),
     })?;
 
-    if trust::untrust(&main_worktree_path, &config)? {
+    if trust::untrust(&repo_root, &config)? {
         println!("Untrusted configuration for: {}", repo_root.display());
     } else {
         println!("Configuration was not trusted: {}", repo_root.display());
