@@ -29,8 +29,12 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
     // Get main workspace path for trust operations
     let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
 
-    let config =
-        load_config_with_trust_check(&repo_root, &main_worktree_path, true, TrustHint::None)?;
+    let config = load_config_with_trust_check(
+        &main_worktree_path,
+        &main_worktree_path,
+        true,
+        TrustHint::None,
+    )?;
     color::set_cli_theme(&config.ui.colors);
 
     let worktrees = provider.list_workspaces()?;
