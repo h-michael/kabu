@@ -115,7 +115,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
             worktree_path: path.to_string_lossy().to_string(),
             worktree_name,
             branch: None, // Branch info not available for remove
-            repo_root: repo_root.to_string_lossy().to_string(),
+            repo_root: main_worktree_path.to_string_lossy().to_string(),
             vcs_type: provider.name().to_string(),
             change_id: None,
             commit_id: None,
@@ -148,7 +148,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
                     hook::dry_run_hooks("post_remove", &config.hooks.post_remove, &output);
                 }
             } else if let Err(e) =
-                hook::run_post_remove(&config.hooks, &hook_env, &repo_root, &output)
+                hook::run_post_remove(&config.hooks, &hook_env, &main_worktree_path, &output)
             {
                 // Extract exit code from error if available
                 let exit_code = match &e {
