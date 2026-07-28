@@ -139,6 +139,11 @@ pub(crate) fn worktree_add(args: &AddArgs, path: &std::path::Path) -> Result<()>
 }
 
 /// Get the repository root directory.
+///
+/// This always returns the main worktree's path, matching the jj backend's
+/// contract. `git rev-parse --show-toplevel` returns the toplevel of whichever
+/// worktree the command runs from, so callers inside a linked worktree are
+/// redirected to the main worktree here.
 pub(crate) fn repository_root() -> Result<PathBuf> {
     let output = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -148,8 +153,8 @@ pub(crate) fn repository_root() -> Result<PathBuf> {
         return Err(Error::NotInGitRepo);
     }
 
-    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(PathBuf::from(path))
+    let current_root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    main_worktree_path_for(&current_root)
 }
 
 /// Remove a worktree. Used for rollback on failure.
