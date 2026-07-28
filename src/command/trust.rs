@@ -8,7 +8,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
 
     if args.check {
         let repo_root = match args.path {
-            Some(p) => p.canonicalize()?,
+            Some(p) => provider.main_workspace_path_for(&p.canonicalize()?)?,
             None => {
                 if !provider.is_inside_repo() {
                     return Ok(());
@@ -26,8 +26,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
             return Ok(());
         }
 
-        let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
-        let is_trusted = trust::is_trusted(&main_worktree_path, &config)?;
+        let is_trusted = trust::is_trusted(&repo_root, &config)?;
         if is_trusted {
             return Ok(());
         }
@@ -36,11 +35,9 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
     }
 
     let repo_root = match args.path {
-        Some(p) => p.canonicalize()?,
+        Some(p) => provider.main_workspace_path_for(&p.canonicalize()?)?,
         None => provider.main_workspace_root()?,
     };
-
-    let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
 
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),
@@ -177,7 +174,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
             }
         }
 
-        let is_trusted = trust::is_trusted(&main_worktree_path, &config)?;
+        let is_trusted = trust::is_trusted(&repo_root, &config)?;
         println!(
             "\nTrust status: {}",
             if is_trusted { "trusted" } else { "not trusted" }
@@ -322,14 +319,14 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
 
     // Check if configuration has changed and display diff if so
     let use_color = color_config.is_enabled();
-    if let Ok(Some(trust_entry)) = trust::read_trust_entry(&main_worktree_path) {
+    if let Ok(Some(trust_entry)) = trust::read_trust_entry(&repo_root) {
         let old_snapshot = &trust_entry.config_snapshot;
         let new_config = &config;
 
         // Compare snapshots to detect changes
         let new_snapshot = ConfigSnapshot::from_config(new_config);
         if old_snapshot == &new_snapshot {
-            let is_trusted = trust::is_trusted(&main_worktree_path, &config)?;
+            let is_trusted = trust::is_trusted(&repo_root, &config)?;
             if is_trusted {
                 // Configuration hasn't changed, already trusted
                 println!(
@@ -346,7 +343,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
     }
 
     if args.yes {
-        trust::trust(&main_worktree_path, &config)?;
+        trust::trust(&repo_root, &config)?;
         println!("\n✓ Configuration trusted for: {}", repo_root.display());
         println!("These hooks will now run automatically on kabu add/remove commands.");
         return Ok(());
@@ -355,7 +352,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
     // Prompt for confirmation
     if prompt::is_interactive() {
         if prompt::prompt_trust_hooks(&repo_root)? {
-            trust::trust(&main_worktree_path, &config)?;
+            trust::trust(&repo_root, &config)?;
             println!("\n✓ Configuration trusted for: {}", repo_root.display());
             println!("These hooks will now run automatically on kabu add/remove commands.");
         } else {
