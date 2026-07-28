@@ -15,6 +15,7 @@ use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
 use unicode_width::UnicodeWidthStr;
 
+#[cfg(unix)]
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::Duration;

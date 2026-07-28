@@ -90,11 +90,6 @@ impl HookEnv {
         self.expand_template_with(cmd, shell_escape)
     }
 
-    #[cfg(windows)]
-    fn expand_template(&self, cmd: &str) -> String {
-        self.expand_template_with(cmd, powershell_escape)
-    }
-
     /// Set environment variables on a Command for use in hook scripts.
     ///
     /// Unlike template variables, these are not shell-escaped, allowing hooks
@@ -302,16 +297,6 @@ fn select_windows_shell_with(
     Err(Error::HookExecutionFailed {
         command: String::from(""),
         cause: String::from("No supported shell found for hooks on Windows"),
-    })
-}
-
-#[cfg(windows)]
-fn parse_windows_shell_override(value: &str) -> Result<WindowsShell> {
-    let path_var = std::env::var_os("PATH");
-    let path_ext = std::env::var_os("PATHEXT");
-
-    parse_windows_shell_override_with(value, path_var.as_deref(), path_ext.as_deref(), &|path| {
-        path.is_file()
     })
 }
 
@@ -551,6 +536,16 @@ mod tests {
     use super::*;
 
     #[cfg(unix)]
+    fn test_escape(s: &str) -> String {
+        shell_escape(s)
+    }
+
+    #[cfg(windows)]
+    fn test_escape(s: &str) -> String {
+        powershell_escape(s)
+    }
+
+    #[cfg(unix)]
     #[test]
     fn test_shell_escape_basic() {
         assert_eq!(shell_escape("hello"), "'hello'");
@@ -716,7 +711,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn test_windows_shell_override_invalid_value() {
-        let result = parse_windows_shell_override("invalid-shell");
+        let result = parse_windows_shell_override_with("invalid-shell", None, None, &|_| false);
         assert!(result.is_err());
     }
 
@@ -733,7 +728,7 @@ mod tests {
             hook_shell: None,
         };
 
-        let result = env.expand_template("echo {{worktree_name}}");
+        let result = env.expand_template_with("echo {{worktree_name}}", test_escape);
         assert!(result.contains("my-feature"));
         assert!(result.contains("echo"));
     }
@@ -751,14 +746,14 @@ mod tests {
             hook_shell: None,
         };
 
-        let result = env.expand_template("cd {{worktree_path}}");
+        let result = env.expand_template_with("cd {{worktree_path}}", test_escape);
         // Should be properly escaped
         assert!(result.contains('\''));
 
-        let result = env.expand_template("echo {{worktree_name}}");
+        let result = env.expand_template_with("echo {{worktree_name}}", test_escape);
         assert!(result.contains('\''));
 
-        let result = env.expand_template("git checkout {{branch}}");
+        let result = env.expand_template_with("git checkout {{branch}}", test_escape);
         assert!(result.contains('\''));
     }
 
@@ -775,7 +770,7 @@ mod tests {
             hook_shell: None,
         };
 
-        let result = env.expand_template("echo {{branch}}");
+        let result = env.expand_template_with("echo {{branch}}", test_escape);
         assert_eq!(result, "echo ");
     }
 
@@ -792,7 +787,10 @@ mod tests {
             hook_shell: None,
         };
 
-        let result = env.expand_template("cd {{worktree_path}} && git checkout {{branch}} && pwd");
+        let result = env.expand_template_with(
+            "cd {{worktree_path}} && git checkout {{branch}} && pwd",
+            test_escape,
+        );
         assert!(result.contains("/worktree"));
         assert!(result.contains("main"));
     }
@@ -811,23 +809,23 @@ mod tests {
         };
 
         // Test jj-specific variables
-        let result = env.expand_template("echo {{change_id}}");
+        let result = env.expand_template_with("echo {{change_id}}", test_escape);
         assert!(result.contains("abc123def456"));
 
-        let result = env.expand_template("echo {{commit_id}}");
+        let result = env.expand_template_with("echo {{commit_id}}", test_escape);
         assert!(result.contains("xyz789"));
 
-        let result = env.expand_template("echo {{vcs_type}}");
+        let result = env.expand_template_with("echo {{vcs_type}}", test_escape);
         assert!(result.contains("jj"));
 
         // Test alias variables work
-        let result = env.expand_template("cd {{workspace_path}}");
+        let result = env.expand_template_with("cd {{workspace_path}}", test_escape);
         assert!(result.contains("/workspace"));
 
-        let result = env.expand_template("echo {{workspace_name}}");
+        let result = env.expand_template_with("echo {{workspace_name}}", test_escape);
         assert!(result.contains("feature"));
 
-        let result = env.expand_template("echo {{bookmark}}");
+        let result = env.expand_template_with("echo {{bookmark}}", test_escape);
         assert!(result.contains("my-bookmark"));
     }
 
