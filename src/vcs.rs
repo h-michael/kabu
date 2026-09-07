@@ -147,6 +147,11 @@ pub(crate) trait VcsProvider {
     /// List remote branches (git only, returns empty for jj).
     fn list_remote_branches(&self) -> Result<Vec<String>>;
 
+    /// Determine the repository's default branch (e.g. the branch `<remote>/HEAD`
+    /// points to), if it can be determined. Returns `Ok(None)` when undeterminable
+    /// rather than an error, since this is a best-effort UX hint.
+    fn default_branch(&self, remote: &str) -> Result<Option<String>>;
+
     /// Get recent commits/changes for a branch or revision.
     fn log_oneline(&self, commitish: &str, limit: usize) -> Result<Vec<String>>;
 

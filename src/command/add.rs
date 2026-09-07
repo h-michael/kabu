@@ -282,6 +282,13 @@ fn run_interactive(
     let current_dir = std::env::current_dir()?;
     let local_branches = provider.list_branches()?;
     let remote_branches = provider.list_remote_branches()?;
+    let default_branch = provider
+        .default_branch(config.worktree.default_remote())
+        .ok()
+        .flatten();
+    let default_remote_branch = default_branch
+        .as_ref()
+        .map(|branch| format!("{}/{}", config.worktree.default_remote(), branch));
 
     let suggest_branch_name = config.worktree.branch_template.as_ref().map(|_| {
         let repository = provider.repository_name().unwrap_or_default();
@@ -342,6 +349,8 @@ fn run_interactive(
     let result = interactive::run_add_interactive(interactive::AddInteractiveInput {
         local_branches,
         remote_branches,
+        default_branch,
+        default_remote_branch,
         used_branches,
         current_dir: current_dir.clone(),
         existing_worktrees,

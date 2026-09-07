@@ -75,6 +75,10 @@ impl VcsProvider for JjProvider {
         list_remote_bookmarks()
     }
 
+    fn default_branch(&self, remote: &str) -> Result<Option<String>> {
+        default_branch(remote)
+    }
+
     fn log_oneline(&self, revset: &str, limit: usize) -> Result<Vec<String>> {
         log_oneline(revset, limit)
     }
@@ -722,6 +726,21 @@ pub(crate) fn list_remote_bookmarks() -> Result<Vec<String>> {
         .filter(|l| !l.trim().is_empty())
         .map(String::from)
         .collect())
+}
+
+/// Determine the repository's default branch (bookmark), if determinable.
+///
+/// jj has no equivalent "default bookmark" concept or a fetched `HEAD`
+/// symref like git. For colocated repositories, this delegates to git's
+/// `<remote>/HEAD` symref detection. For non-colocated repositories there is
+/// no reliable source for this, so this always returns `Ok(None)` rather
+/// than guessing from bookmark names.
+pub(crate) fn default_branch(remote: &str) -> Result<Option<String>> {
+    if is_colocated() {
+        return super::git::default_branch(remote);
+    }
+
+    Ok(None)
 }
 
 /// Get recent commits for a revset.

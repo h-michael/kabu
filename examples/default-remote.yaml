@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
+
+# When to use: Your default branch is detected via a remote other than "origin"
+# (for example a fork where "upstream" holds the real default branch).
+# Run: kabu add -i
+# Expected effect: The default branch is highlighted and placed first in the
+# interactive branch selection list.
+# Pitfall: kabu detects the default branch from `<remote>/HEAD` (git only;
+# non-colocated jj has no equivalent). Fetch the remote at least once so this
+# reference exists, otherwise no default branch is highlighted (kabu never
+# guesses from local branch names).
+
+worktree:
+  default_remote: upstream
