@@ -69,6 +69,10 @@ impl VcsProvider for GitProvider {
         list_remote_branches()
     }
 
+    fn default_branch(&self, remote: &str) -> Result<Option<String>> {
+        default_branch(remote)
+    }
+
     fn log_oneline(&self, commitish: &str, limit: usize) -> Result<Vec<String>> {
         log_oneline(commitish, limit)
     }
@@ -280,6 +284,42 @@ pub(crate) fn list_remote_branches() -> Result<Vec<String>> {
             }
         })
         .collect())
+}
+
+/// Determine the repository's default branch (e.g. "main") from
+/// `refs/remotes/<remote>/HEAD`, which reflects the remote's actual
+/// configured default branch (including custom names like "trunk").
+/// Returns `Ok(None)` if the symref is unavailable, e.g. the remote has
+/// never been fetched or doesn't exist. This is intentionally not guessed
+/// from local branch names, since a stale "main"/"master" branch could be
+/// mistaken for the real default branch.
+pub(crate) fn default_branch(remote: &str) -> Result<Option<String>> {
+    let symref = format!("refs/remotes/{remote}/HEAD");
+    let output = Command::new("git")
+        .args(["symbolic-ref", "--short", &symref])
+        .output()?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    Ok(parse_symbolic_ref_branch(
+        &String::from_utf8_lossy(&output.stdout),
+        remote,
+    ))
+}
+
+/// Extract the branch name from `git symbolic-ref --short refs/remotes/<remote>/HEAD`
+/// output (e.g. "origin/main" with remote "origin" -> "main").
+fn parse_symbolic_ref_branch(output: &str, remote: &str) -> Option<String> {
+    let resolved = output.trim();
+    let prefix = format!("{remote}/");
+    let branch = resolved.strip_prefix(&prefix)?;
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch.to_string())
+    }
 }
 
 /// Validate a branch name using git check-ref-format.
@@ -769,5 +809,31 @@ mod tests {
 
         assert!(result.has_unpushed);
         assert_eq!(result.count, 3);
+    }
+
+    #[test]
+    fn test_parse_symbolic_ref_branch() {
+        assert_eq!(
+            parse_symbolic_ref_branch("origin/main\n", "origin"),
+            Some("main".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_symbolic_ref_branch_custom_name() {
+        assert_eq!(
+            parse_symbolic_ref_branch("upstream/trunk\n", "upstream"),
+            Some("trunk".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_symbolic_ref_branch_wrong_remote_prefix() {
+        assert_eq!(parse_symbolic_ref_branch("origin/main\n", "upstream"), None);
+    }
+
+    #[test]
+    fn test_parse_symbolic_ref_branch_empty() {
+        assert_eq!(parse_symbolic_ref_branch("", "origin"), None);
     }
 }

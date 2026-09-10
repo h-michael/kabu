@@ -193,6 +193,10 @@ struct RawAutoCd {
 struct RawWorktree {
     path_template: Option<String>,
     branch_template: Option<String>,
+    #[schemars(
+        description = "Remote name used to detect the default branch (e.g. origin/HEAD) for the branch selection UI (default: origin)"
+    )]
+    default_remote: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
@@ -416,6 +420,10 @@ pub(crate) fn merge_with_global(mut repo: Config, global: Option<&Config>) -> Co
         repo.worktree.branch_template = global.worktree.branch_template.clone();
     }
 
+    if repo.worktree.default_remote.is_none() {
+        repo.worktree.default_remote = global.worktree.default_remote.clone();
+    }
+
     if repo.on_setup_failure.remove_worktree.is_none() {
         repo.on_setup_failure.remove_worktree = global.on_setup_failure.remove_worktree;
     }
@@ -612,6 +620,7 @@ impl TryFrom<RawConfig> for Config {
             worktree: Worktree {
                 path_template: raw.worktree.path_template,
                 branch_template: raw.worktree.branch_template,
+                default_remote: raw.worktree.default_remote,
             },
             on_setup_failure: OnSetupFailure {
                 remove_worktree: raw.on_setup_failure.remove_worktree,
@@ -693,6 +702,7 @@ impl AutoCd {
 pub(crate) struct Worktree {
     pub path_template: Option<String>,
     pub branch_template: Option<String>,
+    pub default_remote: Option<String>,
 }
 
 /// Behavior when setup operations fail after worktree creation.
@@ -765,6 +775,11 @@ impl UiColors {
 }
 
 impl Worktree {
+    /// Returns the remote name used to detect the default branch, defaulting to "origin".
+    pub fn default_remote(&self) -> &str {
+        self.default_remote.as_deref().unwrap_or("origin")
+    }
+
     /// Generate suggested worktree path based on configuration.
     /// Returns None if no worktree config is set.
     pub fn generate_path(&self, branch: &str, repository: &str) -> Option<String> {
@@ -1745,6 +1760,23 @@ worktree:
     }
 
     #[test]
+    fn test_parse_default_remote() {
+        let yaml = r#"
+worktree:
+  default_remote: upstream
+        "#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(config.worktree.default_remote(), "upstream");
+    }
+
+    #[test]
+    fn test_default_remote_defaults_to_origin() {
+        let worktree = Worktree::default();
+        assert_eq!(worktree.default_remote(), "origin");
+    }
+
+    #[test]
     fn test_parse_worktree_path_with_variables() {
         let yaml = r#"
 worktree:
@@ -1798,6 +1830,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../worktrees/".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
         assert_eq!(result, Some("../worktrees/feature/foo".to_string()));
@@ -1808,6 +1841,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../{{repository}}-{{branch}}".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
         assert_eq!(result, Some("../myrepo-feature/foo".to_string()));
@@ -1818,6 +1852,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../wt-{{branch}}".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("main", "myrepo");
         assert_eq!(result, Some("../wt-main".to_string()));
@@ -1828,6 +1863,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../{{repository}}-worktree".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
         assert_eq!(result, Some("../myrepo-worktree".to_string()));
@@ -1838,6 +1874,7 @@ worktree:
         let worktree = Worktree {
             path_template: None,
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
         assert_eq!(result, None);
@@ -1848,6 +1885,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("feature/deep/nested", "myrepo");
         assert_eq!(result, Some("../feature/deep/nested".to_string()));
@@ -1858,6 +1896,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../{{repository}}-{{branch}}-".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("test", "myrepo");
         assert_eq!(result, Some("../myrepo-test-".to_string()));
@@ -1882,6 +1921,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../{{ branch }}-{{ repository }}".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("test", "myrepo");
         assert_eq!(result, Some("../test-myrepo".to_string()));
@@ -1892,6 +1932,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../{{  branch  }}-{{   repository   }}-".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("foo", "bar");
         assert_eq!(result, Some("../foo-bar-".to_string()));
@@ -1902,6 +1943,7 @@ worktree:
         let worktree = Worktree {
             path_template: Some("../{branch}/{{ repository }}".to_string()),
             branch_template: None,
+            default_remote: None,
         };
         let result = worktree.generate_path("feature", "myrepo");
         // Single braces should be treated as literal
@@ -1986,6 +2028,7 @@ worktree:
         let worktree = Worktree {
             path_template: None,
             branch_template: Some("review/{{commitish}}".to_string()),
+            default_remote: None,
         };
         let env = BranchTemplateEnv {
             commitish: "feature/auth".to_string(),
@@ -2000,6 +2043,7 @@ worktree:
         let worktree = Worktree {
             path_template: None,
             branch_template: None,
+            default_remote: None,
         };
         let env = BranchTemplateEnv {
             commitish: "main".to_string(),

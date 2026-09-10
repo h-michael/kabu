@@ -10,6 +10,7 @@ This directory is organized by task so you can pick one file and start quickly.
 | [`basic-setup.yaml`](basic-setup.yaml) | mkdir + link + copy | Typical daily usage | All |
 | [`path-template.yaml`](path-template.yaml) | Worktree/workspace location templates | Standardized path layout | All |
 | [`branch-template.yaml`](branch-template.yaml) | Interactive branch naming templates | Teams with branch naming conventions | All |
+| [`default-remote.yaml`](default-remote.yaml) | Default branch detection via a custom remote | Forks / non-`origin` remotes | All |
 | [`glob-untracked.yaml`](glob-untracked.yaml) | Glob links + `skip_tracked` | Local fixtures and local-only files | All |
 | [`hooks-safe.yaml`](hooks-safe.yaml) | Hook lifecycle + trust model | Setup/cleanup automation | Unix + Windows |
 | [`nodejs-bootstrap.yaml`](nodejs-bootstrap.yaml) | Node.js bootstrap hooks | npm-based projects | Unix + Windows |

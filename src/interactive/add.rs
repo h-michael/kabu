@@ -34,6 +34,8 @@ type BranchNameValidator = Arc<dyn Fn(&str) -> Result<Option<String>> + Send + S
 pub(crate) struct AddInteractiveInput {
     pub local_branches: Vec<String>,
     pub remote_branches: Vec<String>,
+    pub default_branch: Option<String>,
+    pub default_remote_branch: Option<String>,
     pub used_branches: HashMap<String, PathBuf>,
     pub current_dir: PathBuf,
     pub existing_worktrees: Vec<WorktreeSummary>,
@@ -148,6 +150,7 @@ fn build_breadcrumb(state: &AddUiState) -> Vec<&'static str> {
 struct BranchItem {
     name: String,
     in_use_by: Option<PathBuf>,
+    is_default: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -172,10 +175,15 @@ impl BranchRow {
             BranchRow::Action(NewBranchAction::Commit) => "+ New branch from commit".to_string(),
             BranchRow::Header(label) => label.clone(),
             BranchRow::Existing(item) => {
-                if let Some(path) = item.in_use_by.as_ref() {
-                    format!("{}  [in use: {}]", item.name, path.display())
+                let name = if item.is_default {
+                    format!("{} (default)", item.name)
                 } else {
                     item.name.clone()
+                };
+                if let Some(path) = item.in_use_by.as_ref() {
+                    format!("{}  [in use: {}]", name, path.display())
+                } else {
+                    name
                 }
             }
         }
@@ -327,6 +335,19 @@ fn run_add_ui(
     }
 }
 
+/// Reorders branch names so the default branch (if present) comes first,
+/// making it the natural cursor position when the list is shown.
+fn order_with_default_first(names: &[String], default_branch: &Option<String>) -> Vec<String> {
+    let Some(default_branch) = default_branch else {
+        return names.to_vec();
+    };
+
+    let mut ordered = Vec::with_capacity(names.len());
+    ordered.extend(names.iter().filter(|name| *name == default_branch).cloned());
+    ordered.extend(names.iter().filter(|name| *name != default_branch).cloned());
+    ordered
+}
+
 fn update_branch_rows(state: &mut AddUiState, input: &AddInteractiveInput) {
     let mut rows = Vec::new();
 
@@ -339,31 +360,44 @@ fn update_branch_rows(state: &mut AddUiState, input: &AddInteractiveInput) {
         return;
     }
 
+    let ordered_local_branches =
+        order_with_default_first(&input.local_branches, &input.default_branch);
+
     if state.branch_purpose == BranchPurpose::NewBase {
-        if !input.local_branches.is_empty() {
-            rows.push(BranchRow::Header("-- Local --".to_string()));
-        }
-        for name in &input.local_branches {
-            rows.push(BranchRow::Existing(BranchItem {
-                name: name.clone(),
-                in_use_by: None,
-            }));
-        }
+        // Remote branches come first: `<remote>/HEAD` is the authoritative
+        // source for the default branch, whereas a local branch of the same
+        // name can be stale if it hasn't been fetched/pulled recently.
+        let ordered_remote_branches =
+            order_with_default_first(&input.remote_branches, &input.default_remote_branch);
+
         if !input.remote_branches.is_empty() {
             rows.push(BranchRow::Header("-- Remote --".to_string()));
         }
-        for name in &input.remote_branches {
+        for name in &ordered_remote_branches {
             rows.push(BranchRow::Existing(BranchItem {
                 name: name.clone(),
                 in_use_by: None,
+                is_default: input.default_remote_branch.as_deref() == Some(name.as_str()),
+            }));
+        }
+
+        if !input.local_branches.is_empty() {
+            rows.push(BranchRow::Header("-- Local --".to_string()));
+        }
+        for name in &ordered_local_branches {
+            rows.push(BranchRow::Existing(BranchItem {
+                name: name.clone(),
+                in_use_by: None,
+                is_default: input.default_branch.as_deref() == Some(name.as_str()),
             }));
         }
     } else {
-        for name in &input.local_branches {
+        for name in &ordered_local_branches {
             let in_use_by = input.used_branches.get(name).cloned();
             rows.push(BranchRow::Existing(BranchItem {
                 name: name.clone(),
                 in_use_by,
+                is_default: input.default_branch.as_deref() == Some(name.as_str()),
             }));
         }
     }
@@ -1651,6 +1685,8 @@ mod tests {
         AddInteractiveInput {
             local_branches: vec!["main".to_string(), "feature/test".to_string()],
             remote_branches: vec!["origin/main".to_string()],
+            default_branch: None,
+            default_remote_branch: None,
             used_branches: HashMap::new(),
             current_dir: PathBuf::from("/tmp/repo"),
             existing_worktrees: vec![],
@@ -1809,6 +1845,7 @@ mod tests {
         let row = BranchRow::Existing(BranchItem {
             name: "main".to_string(),
             in_use_by: None,
+            is_default: false,
         });
         assert!(row.is_selectable());
     }
@@ -1818,6 +1855,7 @@ mod tests {
         let row = BranchRow::Existing(BranchItem {
             name: "main".to_string(),
             in_use_by: Some(PathBuf::from("/tmp/worktree")),
+            is_default: false,
         });
         assert!(!row.is_selectable());
     }
@@ -1845,6 +1883,7 @@ mod tests {
         let row = BranchRow::Existing(BranchItem {
             name: "feature/test".to_string(),
             in_use_by: None,
+            is_default: false,
         });
         assert_eq!(row.display(), "feature/test");
     }
@@ -1854,6 +1893,7 @@ mod tests {
         let row = BranchRow::Existing(BranchItem {
             name: "main".to_string(),
             in_use_by: Some(PathBuf::from("/tmp/worktree")),
+            is_default: false,
         });
         assert_eq!(row.display(), "main  [in use: /tmp/worktree]");
     }
@@ -1881,6 +1921,98 @@ mod tests {
     }
 
     #[test]
+    fn test_order_with_default_first() {
+        let names = vec![
+            "feature".to_string(),
+            "main".to_string(),
+            "release".to_string(),
+        ];
+        let ordered = order_with_default_first(&names, &Some("main".to_string()));
+        assert_eq!(ordered, vec!["main", "feature", "release"]);
+    }
+
+    #[test]
+    fn test_order_with_default_first_no_default() {
+        let names = vec!["feature".to_string(), "main".to_string()];
+        let ordered = order_with_default_first(&names, &None);
+        assert_eq!(ordered, names);
+    }
+
+    #[test]
+    fn test_order_with_default_first_default_not_present() {
+        let names = vec!["feature".to_string(), "release".to_string()];
+        let ordered = order_with_default_first(&names, &Some("main".to_string()));
+        assert_eq!(ordered, names);
+    }
+
+    #[test]
+    fn test_update_branch_rows_puts_default_branch_first() {
+        let mut input = create_test_input();
+        input.local_branches = vec!["feature/test".to_string(), "main".to_string()];
+        input.default_branch = Some("main".to_string());
+        let mut state = AddUiState::new(&input);
+        state.branch_tab = BranchTab::Existing;
+
+        update_branch_rows(&mut state, &input);
+        filter_branch_rows(&mut state);
+
+        assert!(matches!(
+            &state.branch_rows[0],
+            BranchRow::Existing(item) if item.name == "main" && item.is_default
+        ));
+        assert_eq!(state.branch_cursor, 0);
+    }
+
+    #[test]
+    fn test_update_branch_rows_puts_default_remote_branch_at_the_very_top_in_new_base() {
+        let mut input = create_test_input();
+        input.local_branches = vec!["feature/test".to_string(), "main".to_string()];
+        input.remote_branches = vec!["origin/feature".to_string(), "origin/main".to_string()];
+        input.default_branch = Some("main".to_string());
+        input.default_remote_branch = Some("origin/main".to_string());
+        let mut state = AddUiState::new(&input);
+        state.branch_tab = BranchTab::New;
+        state.branch_purpose = BranchPurpose::NewBase;
+
+        update_branch_rows(&mut state, &input);
+        filter_branch_rows(&mut state);
+
+        // The Remote section (authoritative source for the default branch)
+        // comes before Local, and its default entry is the first row overall.
+        assert!(matches!(
+            &state.branch_rows[0],
+            BranchRow::Header(label) if label == "-- Remote --"
+        ));
+        assert!(matches!(
+            &state.branch_rows[1],
+            BranchRow::Existing(item) if item.name == "origin/main" && item.is_default
+        ));
+        assert_eq!(state.branch_cursor, 1);
+
+        let remote_rows: Vec<&BranchItem> = state
+            .branch_rows
+            .iter()
+            .filter_map(|row| match row {
+                BranchRow::Existing(item) if item.name.starts_with("origin/") => Some(item),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(remote_rows[0].name, "origin/main");
+        assert!(remote_rows[0].is_default);
+        assert!(!remote_rows[1].is_default);
+    }
+
+    #[test]
+    fn test_branch_row_display_marks_default_branch() {
+        let row = BranchRow::Existing(BranchItem {
+            name: "main".to_string(),
+            in_use_by: None,
+            is_default: true,
+        });
+        assert_eq!(row.display(), "main (default)");
+    }
+
+    #[test]
     fn test_add_ui_state_current_branch_row() {
         let input = create_test_input();
         let mut state = AddUiState::new(&input);
@@ -1888,10 +2020,12 @@ mod tests {
             BranchRow::Existing(BranchItem {
                 name: "main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
             BranchRow::Existing(BranchItem {
                 name: "feature".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
         ];
 
@@ -1916,10 +2050,12 @@ mod tests {
             BranchRow::Existing(BranchItem {
                 name: "main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
             BranchRow::Existing(BranchItem {
                 name: "feature".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
         ];
         state.branch_cursor = 1;
@@ -1940,11 +2076,13 @@ mod tests {
             BranchRow::Existing(BranchItem {
                 name: "main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
             BranchRow::Header("-- Remote --".to_string()),
             BranchRow::Existing(BranchItem {
                 name: "origin/main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
         ];
         state.branch_cursor = 2;
@@ -1962,10 +2100,12 @@ mod tests {
             BranchRow::Existing(BranchItem {
                 name: "main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
             BranchRow::Existing(BranchItem {
                 name: "feature".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
         ];
         state.branch_cursor = 0;
@@ -1986,11 +2126,13 @@ mod tests {
             BranchRow::Existing(BranchItem {
                 name: "main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
             BranchRow::Header("-- Remote --".to_string()),
             BranchRow::Existing(BranchItem {
                 name: "origin/main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
         ];
         state.branch_cursor = 0;
@@ -2009,6 +2151,7 @@ mod tests {
             BranchRow::Existing(BranchItem {
                 name: "main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
         ];
         state.branch_cursor = 0;
@@ -2227,6 +2370,7 @@ mod tests {
         state.selected_branch = Some(BranchItem {
             name: "feature/test".to_string(),
             in_use_by: None,
+            is_default: false,
         });
 
         let result = build_branch_choice(&state).unwrap();
@@ -2284,10 +2428,12 @@ mod tests {
             BranchRow::Existing(BranchItem {
                 name: "main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
             BranchRow::Existing(BranchItem {
                 name: "feature".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
         ];
         state.branch_query = TextInputState::new(String::new());
@@ -2305,10 +2451,12 @@ mod tests {
             BranchRow::Existing(BranchItem {
                 name: "main".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
             BranchRow::Existing(BranchItem {
                 name: "feature".to_string(),
                 in_use_by: None,
+                is_default: false,
             }),
         ];
         state.branch_query = TextInputState::new("feat".to_string());
@@ -2329,6 +2477,7 @@ mod tests {
         state.branch_rows = vec![BranchRow::Existing(BranchItem {
             name: "Feature/Test".to_string(),
             in_use_by: None,
+            is_default: false,
         })];
         state.branch_query = TextInputState::new("FEATURE".to_string());
 
@@ -2592,6 +2741,7 @@ mod tests {
         state.selected_branch = Some(BranchItem {
             name: "feature/test".to_string(),
             in_use_by: None,
+            is_default: false,
         });
         state.path_input = TextInputState::new("worktrees/test".to_string());
 
@@ -2687,6 +2837,7 @@ mod tests {
         state.selected_branch = Some(BranchItem {
             name: "feature/test".to_string(),
             in_use_by: None,
+            is_default: false,
         });
         state.path_input = TextInputState::new("worktrees/test".to_string());
 
@@ -2746,6 +2897,7 @@ mod tests {
         state.selected_branch = Some(BranchItem {
             name: "main".to_string(),
             in_use_by: None,
+            is_default: false,
         });
 
         apply_path_suggestion(&mut state, &input);
@@ -2777,6 +2929,7 @@ mod tests {
         state.selected_branch = Some(BranchItem {
             name: "feature/test".to_string(),
             in_use_by: None,
+            is_default: false,
         });
 
         apply_path_suggestion(&mut state, &input);

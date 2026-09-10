@@ -430,6 +430,13 @@
             "null"
           ]
         },
+        "default_remote": {
+          "description": "Remote name used to detect the default branch (e.g. origin/HEAD) for the branch selection UI (default: origin)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "path_template": {
           "type": [
             "string",

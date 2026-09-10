@@ -451,6 +451,7 @@ mod tests {
             worktree: Worktree {
                 path_template: None,
                 branch_template: None,
+                default_remote: None,
             },
             on_setup_failure: OnSetupFailure::default(),
             ui: Ui::default(),
