@@ -2,14 +2,20 @@ use crate::error::{Error, Result};
 
 use std::path::{Path, PathBuf};
 
-/// Refuse to touch `target` if a symlinked path component (the target
-/// itself or any existing ancestor) would resolve outside `worktree_root`.
+/// Refuse to touch `target` if its containing directory resolves outside
+/// `worktree_root` through a symlink.
 ///
-/// `target` may not exist yet, so this walks up to the deepest existing
-/// ancestor, canonicalizes it (resolving every symlink on the way), and
-/// re-appends the non-existent suffix. A dangling symlink at `target`
-/// itself is not resolved by this check; the standard library's own
-/// "already exists" error on the raw operation catches that case instead.
+/// `target` itself is deliberately not resolved: a symlink *at* `target`
+/// is the normal, safe case (replacing a stale symlink with a copy only
+/// ever touches the dirent inside its real parent directory, regardless
+/// of what the symlink points to). The dangerous case is a symlinked
+/// *ancestor*, e.g. a whole directory linked into the worktree with a
+/// `copy` entry underneath it — any write there lands inside whatever
+/// the ancestor symlink points to instead of the worktree.
+///
+/// The parent directory may not exist yet, so this walks up to the
+/// deepest existing ancestor, canonicalizes it (resolving every symlink
+/// on the way), and re-appends the non-existent suffix.
 pub(crate) fn ensure_within_worktree(target: &Path, worktree_root: &Path) -> Result<()> {
     // In `--dry-run`, the worktree itself may not exist yet (VCS add is
     // skipped). Nothing has been written, so there is nothing to protect.
@@ -18,7 +24,11 @@ pub(crate) fn ensure_within_worktree(target: &Path, worktree_root: &Path) -> Res
     }
     let canonical_root = std::fs::canonicalize(worktree_root)?;
 
-    let mut ancestor = target.to_path_buf();
+    let Some(parent) = target.parent() else {
+        return Ok(());
+    };
+
+    let mut ancestor = parent.to_path_buf();
     let mut suffix = PathBuf::new();
     while !ancestor.exists() {
         let Some(file_name) = ancestor.file_name() else {
@@ -31,12 +41,12 @@ pub(crate) fn ensure_within_worktree(target: &Path, worktree_root: &Path) -> Res
     }
 
     let canonical_ancestor = std::fs::canonicalize(&ancestor)?;
-    let resolved = canonical_ancestor.join(&suffix);
+    let resolved_parent = canonical_ancestor.join(&suffix);
 
-    if !resolved.starts_with(&canonical_root) {
+    if !resolved_parent.starts_with(&canonical_root) {
         return Err(Error::TargetEscapesWorktree {
             target: target.to_path_buf(),
-            resolved,
+            resolved: resolved_parent.join(target.file_name().unwrap_or_default()),
         });
     }
 
@@ -60,19 +70,23 @@ mod tests {
     }
 
     #[test]
-    fn test_ensure_within_worktree_existing_target_is_symlink() {
+    fn test_ensure_within_worktree_leaf_symlink_with_real_parent_is_allowed() {
+        // The common `kabu setup` re-run case: a previous run left a
+        // symlink at the exact target, and the parent directory it lives
+        // in is a real directory inside the worktree. Replacing that
+        // symlink (remove_file/rename) never touches whatever it points
+        // to, so this must not be treated as an escape.
         let temp = TempDir::new().unwrap();
         let worktree = temp.path().join("worktree");
         let main_repo = temp.path().join("main");
         std::fs::create_dir(&worktree).unwrap();
         std::fs::create_dir_all(main_repo.join(".claude/rules")).unwrap();
 
-        let target = worktree.join(".claude/rules");
         std::fs::create_dir(worktree.join(".claude")).unwrap();
+        let target = worktree.join(".claude/rules");
         std::os::unix::fs::symlink(main_repo.join(".claude/rules"), &target).unwrap();
 
-        let err = ensure_within_worktree(&target, &worktree).unwrap_err();
-        assert!(matches!(err, Error::TargetEscapesWorktree { .. }));
+        ensure_within_worktree(&target, &worktree).unwrap();
     }
 
     #[test]
