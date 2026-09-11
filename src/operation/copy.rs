@@ -31,10 +31,13 @@ pub(crate) fn copy_file(source: &Path, target: &Path) -> Result<()> {
 /// denied) is treated as "not up to date" so the caller falls back to
 /// the normal conflict path rather than failing here.
 pub(crate) fn is_up_to_date(source: &Path, target: &Path) -> bool {
-    if target.is_symlink() {
+    let Ok(target_meta) = std::fs::symlink_metadata(target) else {
+        return false;
+    };
+    if target_meta.file_type().is_symlink() {
         return false;
     }
-    match (source.is_dir(), target.is_dir()) {
+    match (source.is_dir(), target_meta.is_dir()) {
         (true, true) => dirs_are_identical(source, target),
         (false, false) => files_are_identical(source, target),
         _ => false,

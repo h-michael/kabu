@@ -59,6 +59,16 @@ pub(crate) fn create_symlink(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Check whether `target` already resolves to the same file as `source`, so
+/// creating a symlink would be a no-op. Any I/O error (e.g. a missing
+/// target) is treated as "not up to date".
+pub(crate) fn is_up_to_date(source: &Path, target: &Path) -> bool {
+    matches!(
+        (std::fs::canonicalize(target), std::fs::canonicalize(source)),
+        (Ok(existing), Ok(intended)) if existing == intended
+    )
+}
+
 #[cfg(all(test, feature = "impure-test"))]
 mod tests {
     use super::*;

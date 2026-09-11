@@ -137,18 +137,7 @@ impl Output {
     /// Print a single already-correctly-linked target: a symlink that
     /// already pointed at the intended source, so nothing changed.
     pub fn already_linked(&self, target: &std::path::Path) {
-        if self.quiet {
-            return;
-        }
-        if self.color.is_enabled() {
-            println!(
-                "{}: {}",
-                ColorScheme::dimmed("Already linked"),
-                ColorScheme::path(&target.display().to_string())
-            );
-        } else {
-            println!("Already linked: {}", target.display());
-        }
+        self.print_dimmed_status("Already linked", target);
     }
 
     /// Print a per-entry summary for multiple already-correctly-linked
@@ -162,17 +151,21 @@ impl Output {
     /// Print a single copy target whose content already matched the
     /// source, so nothing changed.
     pub fn up_to_date(&self, target: &std::path::Path) {
+        self.print_dimmed_status("Already up to date", target);
+    }
+
+    fn print_dimmed_status(&self, label: &str, target: &std::path::Path) {
         if self.quiet {
             return;
         }
         if self.color.is_enabled() {
             println!(
                 "{}: {}",
-                ColorScheme::dimmed("Already up to date"),
+                ColorScheme::dimmed(label),
                 ColorScheme::path(&target.display().to_string())
             );
         } else {
-            println!("Already up to date: {}", target.display());
+            println!("{label}: {}", target.display());
         }
     }
 
