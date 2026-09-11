@@ -159,6 +159,29 @@ impl Output {
         self.print_summary("Already linked", count, source_pattern);
     }
 
+    /// Print a single copy target whose content already matched the
+    /// source, so nothing changed.
+    pub fn up_to_date(&self, target: &std::path::Path) {
+        if self.quiet {
+            return;
+        }
+        if self.color.is_enabled() {
+            println!(
+                "{}: {}",
+                ColorScheme::dimmed("Already up to date"),
+                ColorScheme::path(&target.display().to_string())
+            );
+        } else {
+            println!("Already up to date: {}", target.display());
+        }
+    }
+
+    /// Print a per-entry summary for multiple copy targets that already
+    /// matched their source, instead of one line per file.
+    pub fn up_to_date_summary(&self, count: usize, source_pattern: &str) {
+        self.print_summary("Already up to date", count, source_pattern);
+    }
+
     fn print_summary(&self, op: &str, count: usize, source_pattern: &str) {
         if self.quiet {
             return;

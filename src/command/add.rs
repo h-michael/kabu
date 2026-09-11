@@ -464,7 +464,7 @@ pub(crate) fn run_setup(
                     created.push((source, target, expanded_link.description.clone()));
                 }
                 OperationOutcome::AlreadyLinked => already_linked.push(target),
-                OperationOutcome::Reported => {}
+                OperationOutcome::AlreadyUpToDate | OperationOutcome::Reported => {}
             }
         }
         summarize_clean_operations(
@@ -475,13 +475,14 @@ pub(crate) fn run_setup(
             &link.source,
             &created,
         );
-        summarize_already_linked(output, verbose, &link.source, &already_linked);
+        summarize_no_op_operations(output, verbose, FileOp::Link, &link.source, &already_linked);
     }
 
     // Process copies (expand glob patterns first)
     for copy in &config.copy {
         let expanded_copies = expand_copy(copy, repo_root)?;
         let mut created: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
+        let mut up_to_date: Vec<PathBuf> = Vec::new();
         for expanded_copy in expanded_copies {
             let source = repo_root.join(&expanded_copy.source);
             let target = worktree_path.join(&expanded_copy.target);
@@ -503,12 +504,13 @@ pub(crate) fn run_setup(
                 OperationOutcome::Created => {
                     created.push((source, target, expanded_copy.description.clone()));
                 }
-                // Idempotency short-circuiting only applies to symlinks; a
-                // copy always either matches an existing conflict path or
-                // is created fresh.
+                OperationOutcome::AlreadyUpToDate => up_to_date.push(target),
+                // A symlink target is a conflict for `copy`, handled like
+                // any other; only `link` short-circuits on a symlink match.
                 OperationOutcome::AlreadyLinked | OperationOutcome::Reported => {}
             }
         }
+        summarize_no_op_operations(output, verbose, FileOp::Copy, &copy.source, &up_to_date);
         summarize_clean_operations(
             output,
             dry_run,
@@ -537,6 +539,9 @@ enum OperationOutcome {
     /// A symlink already pointed at the intended source; nothing changed.
     /// Foldable into its own per-entry summary line.
     AlreadyLinked,
+    /// A copy target already had the same content as its source; nothing
+    /// changed. Foldable into its own per-entry summary line.
+    AlreadyUpToDate,
     /// Already printed individually: a resolved conflict (skip/overwrite/
     /// backup), or a dry-run preview of either a plain create or what a
     /// conflict would require.
@@ -575,30 +580,38 @@ fn summarize_clean_operations(
     }
 }
 
-/// Print a per-entry summary for links that were already correctly in
-/// place (see `OperationOutcome::AlreadyLinked`), the common case when
-/// re-running `kabu setup` across many worktrees that were already set up.
-/// Printed in dry-run too (unlike `summarize_clean_operations`, which
-/// dry-run suppresses in favor of per-item previews): an already-correct
-/// link has no per-item preview line of its own, so without this summary
-/// dry-run output would silently omit it while a real run reports it,
-/// making the two views incomparable.
-fn summarize_already_linked(
+/// Print a per-entry summary for operations that turned out to be no-ops
+/// (`OperationOutcome::AlreadyLinked`/`AlreadyUpToDate`), the common case
+/// when re-running `kabu setup` across many worktrees that were already
+/// set up. Printed in dry-run too (unlike `summarize_clean_operations`,
+/// which dry-run suppresses in favor of per-item previews): a no-op has
+/// no per-item preview line of its own, so without this summary dry-run
+/// output would silently omit it while a real run reports it, making the
+/// two views incomparable.
+fn summarize_no_op_operations(
     output: &Output,
     verbose: bool,
+    op_type: FileOp,
     source_pattern: &Path,
-    already_linked: &[PathBuf],
+    no_op: &[PathBuf],
 ) {
-    if verbose || already_linked.is_empty() {
+    if verbose || no_op.is_empty() {
         return;
     }
 
-    if let [target] = already_linked {
-        output.already_linked(target);
+    if let [target] = no_op {
+        match op_type {
+            FileOp::Link => output.already_linked(target),
+            FileOp::Copy => output.up_to_date(target),
+        }
         return;
     }
 
-    output.already_linked_summary(already_linked.len(), &source_pattern.to_string_lossy());
+    let source_pattern = source_pattern.to_string_lossy();
+    match op_type {
+        FileOp::Link => output.already_linked_summary(no_op.len(), &source_pattern),
+        FileOp::Copy => output.up_to_date_summary(no_op.len(), &source_pattern),
+    }
 }
 
 /// Parameters for a file operation.
@@ -647,6 +660,20 @@ fn process_operation(
             output.already_linked(target);
         }
         return Ok(OperationOutcome::AlreadyLinked);
+    }
+
+    // Same idea for copy: a target whose content already matches the
+    // source needs no change. Checked only when there's something there
+    // to compare against; `is_up_to_date` itself never treats a symlink
+    // target as up to date, since replacing it is handled as a conflict.
+    if matches!(op_type, FileOp::Copy)
+        && check_conflict(target)
+        && operation::is_up_to_date(source, target)
+    {
+        if verbose {
+            output.up_to_date(target);
+        }
+        return Ok(OperationOutcome::AlreadyUpToDate);
     }
 
     if !check_conflict(target) {

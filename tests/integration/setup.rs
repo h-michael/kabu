@@ -278,3 +278,60 @@ fn test_setup_rejects_main_workspace() {
         .failure()
         .stderr(predicate::str::contains("main worktree/workspace"));
 }
+
+#[test]
+fn test_setup_copy_reports_up_to_date_and_dry_run_matches() {
+    let mut repo = TestRepo::with_config(
+        r#"
+on_conflict: overwrite
+
+copy:
+  - source: rules
+"#,
+    );
+    repo.create_file("rules/a.md", "rule a\n");
+    repo.create_file("rules/b.md", "rule b\n");
+
+    let worktree_path = repo.worktree_path("wt-copy-up-to-date");
+
+    repo.kabu()
+        .args([
+            "add",
+            worktree_path.to_str().unwrap(),
+            "-b",
+            "wt-copy-up-to-date",
+        ])
+        .assert()
+        .success();
+    repo.register_worktree(worktree_path.clone());
+
+    // Re-running setup against an already-matching copy target must not
+    // treat it as a conflict, and dry-run must report the same thing a
+    // real run would.
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap(), "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already up to date"))
+        .stdout(predicate::str::contains("Would overwrite").not());
+
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already up to date"));
+
+    // A stale extra file in the worktree copy means it's no longer up to
+    // date, and setup should replace the whole directory (drop the stale
+    // file) rather than leaving it in place.
+    std::fs::write(worktree_path.join("rules/stale.md"), "old rule\n").unwrap();
+
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Copying: rules"));
+
+    assert!(!worktree_path.join("rules/stale.md").exists());
+    assert!(worktree_path.join("rules/a.md").exists());
+}

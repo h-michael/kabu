@@ -164,14 +164,18 @@ ON_CONFLICT:
     on_conflict unset entirely. The CLI --on-conflict flag only accepts
     the flat form.
 
-    A symlink `link` target that already points at the intended source
-    is left alone (reported, not treated as a conflict), regardless of
-    on_conflict, so re-running setup against an already-correct worktree
-    is a no-op. `copy` has no equivalent idempotency check: a `file`
-    conflict resolved with `overwrite` on a directory target replaces it
-    (removes the existing directory, then copies fresh), it does not
-    merge with existing contents, so a file removed from the source
-    disappears from the target too.
+    A symlink `link` target that already points at the intended source,
+    and a `copy` target whose content already matches the source (byte
+    comparison for a file, full tree comparison for a directory), are
+    left alone (reported as 'Already linked'/'Already up to date', not
+    treated as a conflict) regardless of on_conflict, so re-running
+    setup against an already-correct worktree is a no-op. A `copy`
+    target that is itself a symlink is never considered up to date and
+    always goes through normal conflict handling. A `file` conflict
+    resolved with `overwrite` on a directory target replaces it (removes
+    the existing directory, then copies fresh); it does not merge with
+    existing contents, so a file removed from the source disappears from
+    the target too.
 
 CONFLICT RESOLUTION PRIORITY:
     CLI --on-conflict > per-entry on_conflict > top-level on_conflict > prompt/default behavior
