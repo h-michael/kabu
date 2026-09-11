@@ -134,6 +134,31 @@ impl Output {
         self.print_summary("Copied", count, source_pattern);
     }
 
+    /// Print a single already-correctly-linked target: a symlink that
+    /// already pointed at the intended source, so nothing changed.
+    pub fn already_linked(&self, target: &std::path::Path) {
+        if self.quiet {
+            return;
+        }
+        if self.color.is_enabled() {
+            println!(
+                "{}: {}",
+                ColorScheme::dimmed("Already linked"),
+                ColorScheme::path(&target.display().to_string())
+            );
+        } else {
+            println!("Already linked: {}", target.display());
+        }
+    }
+
+    /// Print a per-entry summary for multiple already-correctly-linked
+    /// targets from a single glob-expanding config entry, instead of one
+    /// line per file. This is the common case when re-running `kabu
+    /// setup` against worktrees that were already set up.
+    pub fn already_linked_summary(&self, count: usize, source_pattern: &str) {
+        self.print_summary("Already linked", count, source_pattern);
+    }
+
     fn print_summary(&self, op: &str, count: usize, source_pattern: &str) {
         if self.quiet {
             return;

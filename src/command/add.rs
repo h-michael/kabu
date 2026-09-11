@@ -440,7 +440,8 @@ pub(crate) fn run_setup(
     let mut tracked_cache: Option<TrackedCache> = None;
     for link in &config.link {
         let expanded_links = expand_link(link, repo_root, provider, &mut tracked_cache)?;
-        let mut clean: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
+        let mut created: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
+        let mut already_linked: Vec<PathBuf> = Vec::new();
         for expanded_link in expanded_links {
             let source = repo_root.join(&expanded_link.source);
             let target = worktree_path.join(&expanded_link.target);
@@ -451,25 +452,36 @@ pub(crate) fn run_setup(
                 config_mode: expanded_link.on_conflict.or(config.on_conflict),
                 description: expanded_link.description.as_deref(),
             };
-            let was_clean = process_operation(
+            match process_operation(
                 &params,
                 worktree_path,
                 &mut conflict_mode_override,
                 dry_run,
                 verbose,
                 output,
-            )?;
-            if was_clean {
-                clean.push((source, target, expanded_link.description.clone()));
+            )? {
+                OperationOutcome::Created => {
+                    created.push((source, target, expanded_link.description.clone()));
+                }
+                OperationOutcome::AlreadyLinked => already_linked.push(target),
+                OperationOutcome::Reported => {}
             }
         }
-        summarize_clean_operations(output, dry_run, verbose, FileOp::Link, &link.source, &clean);
+        summarize_clean_operations(
+            output,
+            dry_run,
+            verbose,
+            FileOp::Link,
+            &link.source,
+            &created,
+        );
+        summarize_already_linked(output, dry_run, verbose, &link.source, &already_linked);
     }
 
     // Process copies (expand glob patterns first)
     for copy in &config.copy {
         let expanded_copies = expand_copy(copy, repo_root)?;
-        let mut clean: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
+        let mut created: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
         for expanded_copy in expanded_copies {
             let source = repo_root.join(&expanded_copy.source);
             let target = worktree_path.join(&expanded_copy.target);
@@ -480,19 +492,31 @@ pub(crate) fn run_setup(
                 config_mode: expanded_copy.on_conflict.or(config.on_conflict),
                 description: expanded_copy.description.as_deref(),
             };
-            let was_clean = process_operation(
+            match process_operation(
                 &params,
                 worktree_path,
                 &mut conflict_mode_override,
                 dry_run,
                 verbose,
                 output,
-            )?;
-            if was_clean {
-                clean.push((source, target, expanded_copy.description.clone()));
+            )? {
+                OperationOutcome::Created => {
+                    created.push((source, target, expanded_copy.description.clone()));
+                }
+                // Idempotency short-circuiting only applies to symlinks; a
+                // copy always either matches an existing conflict path or
+                // is created fresh.
+                OperationOutcome::AlreadyLinked | OperationOutcome::Reported => {}
             }
         }
-        summarize_clean_operations(output, dry_run, verbose, FileOp::Copy, &copy.source, &clean);
+        summarize_clean_operations(
+            output,
+            dry_run,
+            verbose,
+            FileOp::Copy,
+            &copy.source,
+            &created,
+        );
     }
 
     Ok(())
@@ -503,6 +527,20 @@ pub(crate) fn run_setup(
 enum FileOp {
     Link,
     Copy,
+}
+
+/// Outcome of a single link/copy operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OperationOutcome {
+    /// Created with no conflict; foldable into a per-entry summary line.
+    Created,
+    /// A symlink already pointed at the intended source; nothing changed.
+    /// Foldable into its own per-entry summary line.
+    AlreadyLinked,
+    /// Already printed individually: a resolved conflict (skip/overwrite/
+    /// backup), or a dry-run preview of either a plain create or what a
+    /// conflict would require.
+    Reported,
 }
 
 /// Print a per-entry summary for the clean (no-conflict) operations
@@ -537,6 +575,28 @@ fn summarize_clean_operations(
     }
 }
 
+/// Print a per-entry summary for links that were already correctly in
+/// place (see `OperationOutcome::AlreadyLinked`), the common case when
+/// re-running `kabu setup` across many worktrees that were already set up.
+fn summarize_already_linked(
+    output: &Output,
+    dry_run: bool,
+    verbose: bool,
+    source_pattern: &Path,
+    already_linked: &[PathBuf],
+) {
+    if dry_run || verbose || already_linked.is_empty() {
+        return;
+    }
+
+    if let [target] = already_linked {
+        output.already_linked(target);
+        return;
+    }
+
+    output.already_linked_summary(already_linked.len(), &source_pattern.to_string_lossy());
+}
+
 /// Parameters for a file operation.
 struct OperationParams<'a> {
     source: &'a Path,
@@ -548,10 +608,10 @@ struct OperationParams<'a> {
 
 /// Process a single operation (symlink or copy) with conflict handling.
 ///
-/// Returns `Ok(true)` when the operation completed with no conflict and
-/// wasn't already printed (dry-run and conflicts always print
-/// individually), so the caller can fold it into a per-entry summary
-/// line instead of printing it here.
+/// `dry_run` never mutates the filesystem and never prompts: a
+/// conflict's resolution is only decided (and executed) once we know
+/// we're not previewing, so a preview always completes non-interactively
+/// even when no `on_conflict` is configured.
 fn process_operation(
     params: &OperationParams,
     worktree_root: &Path,
@@ -559,7 +619,7 @@ fn process_operation(
     dry_run: bool,
     verbose: bool,
     output: &Output,
-) -> Result<bool> {
+) -> Result<OperationOutcome> {
     let OperationParams {
         source,
         target,
@@ -570,75 +630,106 @@ fn process_operation(
 
     operation::ensure_within_worktree(target, worktree_root)?;
 
-    let mut had_conflict = false;
+    // Re-running setup against an already-correctly-linked target is the
+    // common case (e.g. `kabu setup` across many worktrees set up before
+    // a config change): a symlink already pointing at the intended
+    // source needs no change, regardless of on_conflict.
+    if matches!(op_type, FileOp::Link)
+        && let (Ok(existing), Ok(intended)) =
+            (std::fs::canonicalize(target), std::fs::canonicalize(source))
+        && existing == intended
+    {
+        if verbose {
+            output.already_linked(target);
+        }
+        return Ok(OperationOutcome::AlreadyLinked);
+    }
 
-    // Check for conflict
-    if check_conflict(target) {
-        had_conflict = true;
+    if !check_conflict(target) {
+        if dry_run {
+            let op_name = match op_type {
+                FileOp::Link => "link",
+                FileOp::Copy => "copy",
+            };
+            output.dry_run(&format!(
+                "Would {}: {} -> {}",
+                op_name,
+                source.display(),
+                target.display()
+            ));
+            return Ok(OperationOutcome::Reported);
+        }
 
-        // The override (from --on-conflict or a prior "apply to all"
-        // choice) always wins; otherwise fall back to the mode configured
-        // for this conflict's kind (symlink vs. real file/directory).
-        let kind = conflict_kind(target);
-        let configured =
-            (*override_mode).or_else(|| config_mode.as_ref().and_then(|s| s.resolve(kind)));
+        match op_type {
+            FileOp::Link => operation::create_symlink(source, target)?,
+            FileOp::Copy => operation::copy_file(source, target)?,
+        }
+        if verbose {
+            match op_type {
+                FileOp::Link => output.link(source, target, *description),
+                FileOp::Copy => output.copy(source, target, *description),
+            }
+        }
+        return Ok(OperationOutcome::Created);
+    }
 
-        let mode = if let Some(mode) = configured {
-            mode
-        } else {
-            // Prompt user
+    // Conflict: the override (from --on-conflict or a prior "apply to
+    // all" choice) always wins; otherwise fall back to the mode
+    // configured for this conflict's kind (symlink vs. real file/dir).
+    let kind = conflict_kind(target);
+    let configured =
+        (*override_mode).or_else(|| config_mode.as_ref().and_then(|s| s.resolve(kind)));
+
+    let mode = match configured {
+        Some(mode) => mode,
+        None if dry_run => {
+            output.dry_run(&format!(
+                "Would prompt: {} is an existing {}, no on_conflict configured",
+                target.display(),
+                kind.as_str()
+            ));
+            return Ok(OperationOutcome::Reported);
+        }
+        None => {
             let choice: ConflictChoice = interactive::prompt_conflict(target)?;
             if choice.apply_to_all {
                 *override_mode = Some(choice.mode);
             }
             choice.mode
-        };
-
-        // Resolve conflict
-        let action = resolve_conflict(target, mode)?;
-        match action {
-            ConflictAction::Abort => return Err(Error::Aborted),
-            ConflictAction::Skip => {
-                output.skip(target);
-                return Ok(false);
-            }
-            ConflictAction::Proceed => {
-                // Continue with operation
-            }
         }
-    }
+    };
 
-    // Perform operation
     if dry_run {
-        let op_name = match op_type {
-            FileOp::Link => "link",
-            FileOp::Copy => "copy",
-        };
         output.dry_run(&format!(
-            "Would {}: {} -> {}",
-            op_name,
-            source.display(),
+            "Would {} ({} conflict): {}",
+            mode.as_str(),
+            kind.as_str(),
             target.display()
         ));
-        return Ok(false);
+        return Ok(OperationOutcome::Reported);
+    }
+
+    let action = resolve_conflict(target, mode)?;
+    match action {
+        ConflictAction::Abort => return Err(Error::Aborted),
+        ConflictAction::Skip => {
+            output.skip(target);
+            return Ok(OperationOutcome::Reported);
+        }
+        ConflictAction::Proceed => {}
     }
 
     match op_type {
         FileOp::Link => operation::create_symlink(source, target)?,
         FileOp::Copy => operation::copy_file(source, target)?,
     }
-
-    // A conflict is always worth calling out individually, even resolved
-    // ones; a clean operation is only printed here in --verbose mode,
-    // otherwise the caller folds it into a per-entry summary.
-    if verbose || had_conflict {
-        match op_type {
-            FileOp::Link => output.link(source, target, *description),
-            FileOp::Copy => output.copy(source, target, *description),
-        }
+    // A resolved conflict is always worth calling out individually.
+    match op_type {
+        FileOp::Link => output.link(source, target, *description),
+        FileOp::Copy => output.copy(source, target, *description),
     }
 
-    Ok(!had_conflict)
+    Ok(OperationOutcome::Reported)
 }
 
 /// Check if a path contains glob patterns.

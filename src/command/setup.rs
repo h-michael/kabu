@@ -8,7 +8,7 @@
 use crate::cli::SetupArgs;
 use crate::color::{self, ColorConfig};
 use crate::command::add::{SetupOptions, run_setup};
-use crate::command::remove::{find_current_worktree, resolve_worktree_paths};
+use crate::command::remove::{find_current_worktree, is_main_worktree, resolve_worktree_paths};
 use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::error::{Error, Result};
 use crate::output::Output;
@@ -43,6 +43,10 @@ pub(crate) fn run(args: SetupArgs, color: ColorConfig) -> Result<()> {
         }
         None => find_current_worktree(&worktrees)?,
     };
+
+    if is_main_worktree(&target, &worktrees) {
+        return Err(Error::CannotSetupMainWorkspace { path: target });
+    }
 
     run_setup(
         SetupOptions {
