@@ -79,12 +79,7 @@ fn get_config_value(key: &str) -> Result<()> {
         }
         "on_conflict" => {
             if let Some(value) = cfg.on_conflict {
-                match value {
-                    config::OnConflict::Abort => println!("abort"),
-                    config::OnConflict::Skip => println!("skip"),
-                    config::OnConflict::Overwrite => println!("overwrite"),
-                    config::OnConflict::Backup => println!("backup"),
-                }
+                println!("{}", value.describe());
             }
         }
         _ => {
@@ -276,6 +271,10 @@ fn repo_config_template_yaml() -> String {
 
 # Conflict handling for file operations
 # on_conflict: backup  # abort, skip, overwrite, backup
+# Or per conflict kind (a kind left out falls back to prompt/error):
+# on_conflict:
+#   symlink: overwrite  # replacing a symlink never touches what it points to
+#   file: abort
 
 # Auto cd settings (requires shell integration)
 # auto_cd:
@@ -339,6 +338,10 @@ fn repo_config_template_toml() -> String {
 
 # Conflict handling for file operations
 # on_conflict = "backup"  # abort, skip, overwrite, backup
+# Or per conflict kind (a kind left out falls back to prompt/error):
+# [on_conflict]
+# symlink = "overwrite"  # replacing a symlink never touches what it points to
+# file = "abort"
 
 # Auto cd settings (requires shell integration)
 # [auto_cd]

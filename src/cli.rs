@@ -97,7 +97,8 @@ WHAT THIS COMMAND DOES:
     - Validates strict keys (unknown keys fail)
 
 CONFIG KEYS (TOP LEVEL):
-    on_conflict: abort | skip | overwrite | backup
+    on_conflict: <mode>, see ON_CONFLICT below (optional at top level and
+                 per-entry; per-entry overrides top level)
     auto_cd:
       after_add: true | false
       after_remove: main | select
@@ -113,12 +114,12 @@ CONFIG KEYS (TOP LEVEL):
         skip_tracked: bool (optional; default = false)
         exclude: list of glob strings (optional; only valid when source
                  is a glob, matched relative to source's literal prefix)
-        on_conflict: abort | skip | overwrite | backup (optional)
+        on_conflict: <mode> (optional)
         description: string (optional)
     copy:
       - source: string
         target: string (optional; default = source)
-        on_conflict: abort | skip | overwrite | backup (optional)
+        on_conflict: <mode> (optional)
         description: string (optional)
     hooks:
       hook_shell: string (optional)
@@ -147,6 +148,18 @@ TEMPLATE VARIABLES:
 HOOK ENVIRONMENT VARIABLES:
     KABU_WORKTREE_PATH, KABU_WORKTREE_NAME, KABU_BRANCH, KABU_REPO_ROOT,
     KABU_VCS_TYPE, KABU_CHANGE_ID, KABU_COMMIT_ID
+
+ON_CONFLICT:
+    A conflict mode is either:
+      abort | skip | overwrite | backup            (applies to every conflict)
+    or a map applying a mode per conflict kind:
+      {{symlink: <mode>, file: <mode>}}
+    'symlink' conflicts are always safe to overwrite (only the symlink
+    itself is replaced, never whatever it points to); 'file' covers real
+    files and directories. A kind left out of the map falls back to
+    prompt (interactive) or an error (non-interactive), same as leaving
+    on_conflict unset entirely. The CLI --on-conflict flag only accepts
+    the flat form.
 
 CONFLICT RESOLUTION PRIORITY:
     CLI --on-conflict > per-entry on_conflict > top-level on_conflict > prompt/default behavior

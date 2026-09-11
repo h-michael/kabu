@@ -1,4 +1,4 @@
-use crate::config::OnConflict;
+use crate::config::{ConflictKind, OnConflict};
 use crate::error::Result;
 
 use std::path::Path;
@@ -14,6 +14,20 @@ pub(crate) enum ConflictAction {
 /// Check if target path already exists.
 pub(crate) fn check_conflict(target: &Path) -> bool {
     target.exists()
+}
+
+/// Classify an existing conflict target as a symlink or a regular
+/// file/directory, so `on_conflict` can treat them differently.
+///
+/// Uses `symlink_metadata`, which does not follow the final path
+/// component, so a symlink is reported as such regardless of whether it
+/// points to a valid location.
+pub(crate) fn conflict_kind(target: &Path) -> ConflictKind {
+    if target.is_symlink() {
+        ConflictKind::Symlink
+    } else {
+        ConflictKind::File
+    }
 }
 
 /// Resolve conflict by removing or backing up the target.

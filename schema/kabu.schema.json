@@ -31,7 +31,7 @@
     "on_conflict": {
       "anyOf": [
         {
-          "$ref": "#/$defs/OnConflict"
+          "$ref": "#/$defs/OnConflictSetting"
         },
         {
           "type": "null"
@@ -120,7 +120,7 @@
         "on_conflict": {
           "anyOf": [
             {
-              "$ref": "#/$defs/OnConflict"
+              "$ref": "#/$defs/OnConflictSetting"
             },
             {
               "type": "null"
@@ -225,7 +225,7 @@
         "on_conflict": {
           "anyOf": [
             {
-              "$ref": "#/$defs/OnConflict"
+              "$ref": "#/$defs/OnConflictSetting"
             },
             {
               "type": "null"
@@ -276,6 +276,47 @@
         "skip",
         "overwrite",
         "backup"
+      ]
+    },
+    "OnConflictByKind": {
+      "title": "On Conflict By Kind",
+      "description": "Conflict resolution mode per conflict kind",
+      "type": "object",
+      "properties": {
+        "file": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OnConflict"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "symlink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OnConflict"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "OnConflictSetting": {
+      "description": "Conflict resolution mode, either applied uniformly or per conflict kind.",
+      "anyOf": [
+        {
+          "description": "Applies to every conflict, regardless of kind.",
+          "$ref": "#/$defs/OnConflict"
+        },
+        {
+          "description": "Applies a different mode per conflict kind. A kind left unset\nfalls back to interactive prompt (or an error in non-interactive\nmode), the same as leaving `on_conflict` unset entirely.",
+          "$ref": "#/$defs/OnConflictByKind"
+        }
       ]
     },
     "OnSetupFailure": {
