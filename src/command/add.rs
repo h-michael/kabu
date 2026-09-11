@@ -403,6 +403,7 @@ fn run_setup(
     // Process mkdir
     for mkdir in &config.mkdir {
         let target = worktree_path.join(&mkdir.path);
+        operation::ensure_within_worktree(&target, worktree_path)?;
 
         if args.dry_run {
             output.dry_run(&format!("Would create directory: {}", target.display()));
@@ -426,7 +427,13 @@ fn run_setup(
                 config_mode: expanded_link.on_conflict.or(config.on_conflict),
                 description: expanded_link.description.as_deref(),
             };
-            process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
+            process_operation(
+                &params,
+                worktree_path,
+                &mut conflict_mode_override,
+                args.dry_run,
+                output,
+            )?;
         }
     }
 
@@ -443,7 +450,13 @@ fn run_setup(
                 config_mode: expanded_copy.on_conflict.or(config.on_conflict),
                 description: expanded_copy.description.as_deref(),
             };
-            process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
+            process_operation(
+                &params,
+                worktree_path,
+                &mut conflict_mode_override,
+                args.dry_run,
+                output,
+            )?;
         }
     }
 
@@ -468,6 +481,7 @@ struct OperationParams<'a> {
 /// Process a single operation (symlink or copy) with conflict handling.
 fn process_operation(
     params: &OperationParams,
+    worktree_root: &Path,
     override_mode: &mut Option<OnConflict>,
     dry_run: bool,
     output: &Output,
@@ -479,6 +493,9 @@ fn process_operation(
         config_mode,
         description,
     } = params;
+
+    operation::ensure_within_worktree(target, worktree_root)?;
+
     // Check for conflict
     if check_conflict(target) {
         // Determine conflict mode

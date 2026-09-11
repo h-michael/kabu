@@ -58,6 +58,11 @@ pub(crate) enum Error {
         cause: std::io::Error,
     },
 
+    #[error(
+        "Refusing to write outside the worktree.\n\n  Target:   {target}\n  Resolves to: {resolved}\n  Reason:   A path component of the target is a symlink that points outside the worktree.\n  Fix:      Remove or repoint the symlink, or change the config so this path is not written to."
+    )]
+    TargetEscapesWorktree { target: PathBuf, resolved: PathBuf },
+
     #[error("Operation aborted by user")]
     Aborted,
 

@@ -443,3 +443,35 @@ fn test_add_on_conflict_overwrite() {
     // No backup file should exist
     assert!(!worktree_path.join("local.env.bak").exists());
 }
+
+#[test]
+fn test_add_copy_refuses_to_write_through_symlinked_parent() {
+    // Linking a whole directory (.claude) and then copying into a path
+    // inside it (.claude/rules) must not resolve through the symlink and
+    // touch the main checkout, even with on_conflict: overwrite.
+    let config = r#"
+on_conflict: overwrite
+
+link:
+  - source: .claude
+
+copy:
+  - source: .claude/rules
+"#;
+    let repo = TestRepo::with_config(config);
+    repo.create_file(".claude/rules/a.md", "original rule\n");
+
+    let worktree_path = repo.worktree_path("wt-escape");
+
+    repo.kabu()
+        .args(["add", worktree_path.to_str().unwrap(), "-b", "wt-escape"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("outside the worktree"));
+
+    // The main checkout's file must be untouched.
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join(".claude/rules/a.md")).unwrap(),
+        "original rule\n"
+    );
+}
