@@ -8,6 +8,7 @@ mod help;
 mod hooks;
 mod list;
 mod remove;
+mod setup;
 mod trust;
 
 // jj (Jujutsu) integration tests

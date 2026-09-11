@@ -170,7 +170,7 @@ fn select_worktrees_interactively(worktrees: &[WorkspaceInfo]) -> Result<Vec<Pat
     Ok(paths)
 }
 
-fn find_current_worktree(worktrees: &[WorkspaceInfo]) -> Result<PathBuf> {
+pub(crate) fn find_current_worktree(worktrees: &[WorkspaceInfo]) -> Result<PathBuf> {
     let current_dir = std::env::current_dir()?;
     let current_dir = current_dir
         .canonicalize()
@@ -185,7 +185,10 @@ fn find_current_worktree(worktrees: &[WorkspaceInfo]) -> Result<PathBuf> {
     Err(Error::NotInWorktree)
 }
 
-fn resolve_worktree_paths(paths: &[PathBuf], worktrees: &[WorkspaceInfo]) -> Result<Vec<PathBuf>> {
+pub(crate) fn resolve_worktree_paths(
+    paths: &[PathBuf],
+    worktrees: &[WorkspaceInfo],
+) -> Result<Vec<PathBuf>> {
     let mut resolved = Vec::new();
 
     for path in paths {

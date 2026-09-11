@@ -181,7 +181,8 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
     // Process links and copies with rollback on failure
     if let Err(e) = run_setup(
-        &args,
+        args.on_conflict,
+        args.dry_run,
         &config,
         &repo_root,
         &worktree_path,
@@ -386,16 +387,19 @@ fn run_interactive(
     Ok(worktree_path)
 }
 
-/// Run the setup operations (mkdir, symlinks and copies)
-fn run_setup(
-    args: &AddArgs,
+/// Run the setup operations (mkdir, symlinks and copies) against a
+/// worktree/workspace. Shared by `add` (right after creation) and `setup`
+/// (replayed against an existing one).
+pub(crate) fn run_setup(
+    on_conflict: Option<crate::cli::OnConflictArg>,
+    dry_run: bool,
     config: &Config,
     repo_root: &Path,
     worktree_path: &Path,
     output: &Output,
     provider: &dyn VcsProvider,
 ) -> Result<()> {
-    let mut conflict_mode_override: Option<OnConflict> = args.on_conflict.map(|m| match m {
+    let mut conflict_mode_override: Option<OnConflict> = on_conflict.map(|m| match m {
         crate::cli::OnConflictArg::Abort => OnConflict::Abort,
         crate::cli::OnConflictArg::Skip => OnConflict::Skip,
         crate::cli::OnConflictArg::Overwrite => OnConflict::Overwrite,
@@ -407,7 +411,7 @@ fn run_setup(
         let target = worktree_path.join(&mkdir.path);
         operation::ensure_within_worktree(&target, worktree_path)?;
 
-        if args.dry_run {
+        if dry_run {
             output.dry_run(&format!("Would create directory: {}", target.display()));
         } else {
             create_directory(&target)?;
@@ -433,7 +437,7 @@ fn run_setup(
                 &params,
                 worktree_path,
                 &mut conflict_mode_override,
-                args.dry_run,
+                dry_run,
                 output,
             )?;
         }
@@ -456,7 +460,7 @@ fn run_setup(
                 &params,
                 worktree_path,
                 &mut conflict_mode_override,
-                args.dry_run,
+                dry_run,
                 output,
             )?;
         }
