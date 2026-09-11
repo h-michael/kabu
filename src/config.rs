@@ -362,6 +362,11 @@ struct RawLink {
     description: Option<String>,
     #[serde(default)]
     skip_tracked: bool,
+    #[schemars(
+        description = "Glob patterns to exclude from a glob `source`, matched relative to the glob's literal prefix (e.g. source: \".claude/*\", exclude: [\"CLAUDE.md\"] matches \"CLAUDE.md\", not \".claude/CLAUDE.md\"). Only valid when `source` contains a glob pattern."
+    )]
+    #[serde(default)]
+    exclude: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
@@ -513,12 +518,19 @@ impl TryFrom<RawConfig> for Config {
                 ));
             }
 
+            if !raw_link.exclude.is_empty() && !is_glob_pattern(&raw_link.source) {
+                errors.push(format!(
+                    "  - {prefix}.exclude: only valid when source is a glob pattern"
+                ));
+            }
+
             link.push(Link {
                 source: raw_link.source,
                 target,
                 on_conflict: raw_link.on_conflict,
                 description: raw_link.description,
                 skip_tracked: raw_link.skip_tracked,
+                exclude: raw_link.exclude,
             });
         }
 
@@ -643,6 +655,13 @@ impl TryFrom<RawConfig> for Config {
             copy,
         })
     }
+}
+
+/// Check whether a path contains glob meta-characters.
+fn is_glob_pattern(path: &Path) -> bool {
+    path.to_str()
+        .map(|s| s.contains('*') || s.contains('?') || s.contains('['))
+        .unwrap_or(false)
 }
 
 /// Validate a path and return an error message if invalid.
@@ -1187,6 +1206,7 @@ pub(crate) struct Link {
     pub on_conflict: Option<OnConflict>,
     pub description: Option<String>,
     pub skip_tracked: bool,
+    pub exclude: Vec<String>,
 }
 
 /// File copy configuration entry.
@@ -1263,6 +1283,7 @@ pub(crate) struct LinkSnapshot {
     pub on_conflict: Option<OnConflict>,
     pub description: Option<String>,
     pub skip_tracked: bool,
+    pub exclude: Vec<String>,
 }
 
 /// Copy operation snapshot.
@@ -1301,6 +1322,7 @@ impl ConfigSnapshot {
                     on_conflict: l.on_conflict,
                     description: l.description.clone(),
                     skip_tracked: l.skip_tracked,
+                    exclude: l.exclude.clone(),
                 })
                 .collect(),
             copy: config
@@ -1459,6 +1481,38 @@ link:
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let err = Config::try_from(raw).unwrap_err();
         assert!(err.to_string().contains("duplicate target path"));
+    }
+
+    #[test]
+    fn test_parse_link_with_exclude() {
+        let yaml = r#"
+link:
+  - source: ".claude/*"
+    exclude: ["CLAUDE.md", "rules"]
+        "#;
+
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(
+            config.link[0].exclude,
+            vec!["CLAUDE.md".to_string(), "rules".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_validate_exclude_requires_glob_source() {
+        let yaml = r#"
+link:
+  - source: "CLAUDE.md"
+    exclude: ["rules"]
+        "#;
+
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = Config::try_from(raw).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("only valid when source is a glob pattern")
+        );
     }
 
     #[test]

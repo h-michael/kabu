@@ -301,6 +301,9 @@ fn repo_config_template_yaml() -> String {
 #   - source: "fixtures/*"
 #     skip_tracked: true
 #     description: Link untracked test fixtures
+#   - source: ".claude/*"
+#     exclude: ["CLAUDE.md", "rules"]
+#     description: Link everything except CLAUDE.md and rules
 
 # Copy files from repo root to worktree
 # copy:
@@ -365,6 +368,11 @@ fn repo_config_template_toml() -> String {
 # source = "fixtures/*"
 # skip_tracked = true
 # description = "Link untracked test fixtures"
+#
+# [[link]]
+# source = ".claude/*"
+# exclude = ["CLAUDE.md", "rules"]
+# description = "Link everything except CLAUDE.md and rules"
 
 # Copy files from repo root to worktree
 # [[copy]]

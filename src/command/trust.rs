@@ -488,6 +488,13 @@ fn display_config_diff(old: &ConfigSnapshot, new: &config::Config, use_color: bo
                 println!("    {} description: {}", removed_prefix, desc);
             }
             println!("    {} skip_tracked: {}", removed_prefix, item.skip_tracked);
+            if !item.exclude.is_empty() {
+                println!(
+                    "    {} exclude: {}",
+                    removed_prefix,
+                    item.exclude.join(", ")
+                );
+            }
         }
 
         for item in added {
@@ -504,6 +511,9 @@ fn display_config_diff(old: &ConfigSnapshot, new: &config::Config, use_color: bo
                 println!("    {} description: {}", added_prefix, desc);
             }
             println!("    {} skip_tracked: {}", added_prefix, item.skip_tracked);
+            if !item.exclude.is_empty() {
+                println!("    {} exclude: {}", added_prefix, item.exclude.join(", "));
+            }
         }
 
         if order_changed {

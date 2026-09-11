@@ -2,17 +2,33 @@
 
 # When to use: Share personal coding-agent settings across worktrees.
 # Run: kabu add ../wt-agent -b wt-agent
-# Expected effect: Agent config files are reused via symlink.
+# Expected effect: Agent config files are reused via symlink, except
+#   CLAUDE.md and rules/ which are copied (see Pitfall below).
 # Pitfall: Link only files that are intentionally untracked or local-only.
+# Pitfall (observed with Claude Code 2.1.267, 2026-09-10): Claude Code
+#   resolves .claude/rules/** and @imports in .claude/CLAUDE.md against
+#   the real (symlink-target) path, not the worktree. A symlinked
+#   .claude/rules is silently never loaded, and a symlinked CLAUDE.md
+#   resolves @imports and path-scoped rules against the wrong worktree.
+#   Copy those two instead of linking them. This is Claude Code's
+#   symlink-resolution behavior, not a kabu limitation, and may change.
 
 on_conflict: skip
 
 link:
-  - source: .claude
-    description: Claude Code settings
+  - source: .claude/*
+    exclude: ["CLAUDE.md", "rules"]
+    description: Claude Code settings (skills, agents, local settings, etc.)
 
   - source: .cursor/rules
     description: Cursor rules directory
 
   - source: .cursorrules
     description: Legacy Cursor rules
+
+copy:
+  - source: .claude/CLAUDE.md
+    description: Claude Code project instructions (copied, not symlinked)
+
+  - source: .claude/rules
+    description: Claude Code path-scoped rules (copied, not symlinked)
