@@ -475,7 +475,7 @@ pub(crate) fn run_setup(
             &link.source,
             &created,
         );
-        summarize_already_linked(output, dry_run, verbose, &link.source, &already_linked);
+        summarize_already_linked(output, verbose, &link.source, &already_linked);
     }
 
     // Process copies (expand glob patterns first)
@@ -578,14 +578,18 @@ fn summarize_clean_operations(
 /// Print a per-entry summary for links that were already correctly in
 /// place (see `OperationOutcome::AlreadyLinked`), the common case when
 /// re-running `kabu setup` across many worktrees that were already set up.
+/// Printed in dry-run too (unlike `summarize_clean_operations`, which
+/// dry-run suppresses in favor of per-item previews): an already-correct
+/// link has no per-item preview line of its own, so without this summary
+/// dry-run output would silently omit it while a real run reports it,
+/// making the two views incomparable.
 fn summarize_already_linked(
     output: &Output,
-    dry_run: bool,
     verbose: bool,
     source_pattern: &Path,
     already_linked: &[PathBuf],
 ) {
-    if dry_run || verbose || already_linked.is_empty() {
+    if verbose || already_linked.is_empty() {
         return;
     }
 

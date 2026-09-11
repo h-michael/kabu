@@ -195,6 +195,40 @@ link:
 }
 
 #[test]
+fn test_setup_dry_run_reports_already_linked() {
+    // A dry-run preview must report the same "already linked" state a
+    // real run would, so a user can compare the two: an already-correct
+    // symlink has no "would change" line of its own to stand in for it.
+    let mut repo = TestRepo::with_config(
+        r#"
+link:
+  - source: note.txt
+"#,
+    );
+    repo.create_file("note.txt", "content\n");
+
+    let worktree_path = repo.worktree_path("wt-dry-run-parity");
+
+    repo.kabu()
+        .args([
+            "add",
+            worktree_path.to_str().unwrap(),
+            "-b",
+            "wt-dry-run-parity",
+        ])
+        .assert()
+        .success();
+    repo.register_worktree(worktree_path.clone());
+
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap(), "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already linked"))
+        .stdout(predicate::str::contains("Would link").not());
+}
+
+#[test]
 fn test_setup_dry_run_never_prompts_and_never_mutates() {
     let repo = TestRepo::with_config(
         r#"
