@@ -475,3 +475,64 @@ copy:
         "original rule\n"
     );
 }
+
+#[test]
+fn test_add_on_conflict_by_kind() {
+    // A checked-out worktree always contains whatever is tracked in the
+    // repo, so committing a tracked symlink and a tracked regular file
+    // gives each link entry a real conflict of a known kind (symlink vs.
+    // file) as soon as the worktree is created, without needing a
+    // separate add/remove dance to manufacture one.
+    let config = r#"
+on_conflict:
+  symlink: overwrite
+  file: abort
+
+link:
+  - source: stale-symlink
+  - source: tracked-file.txt
+"#;
+    let repo = TestRepo::with_config(config);
+    repo.create_file_and_commit("tracked-file.txt", "committed content\n", "Add file");
+
+    // Create source files the link entries will point to once resolved.
+    repo.create_file("stale-symlink-target", "real target\n");
+
+    std::os::unix::fs::symlink(
+        repo.path().join("stale-symlink-target"),
+        repo.path().join("stale-symlink"),
+    )
+    .unwrap();
+    std::process::Command::new("git")
+        .current_dir(repo.path())
+        .args(["add", "stale-symlink"])
+        .output()
+        .expect("Failed to git add symlink");
+    std::process::Command::new("git")
+        .current_dir(repo.path())
+        .args(["commit", "-m", "Add tracked symlink"])
+        .output()
+        .expect("Failed to commit symlink");
+
+    let worktree_path = repo.worktree_path("wt-by-kind");
+
+    repo.kabu()
+        .args(["add", worktree_path.to_str().unwrap(), "-b", "wt-by-kind"])
+        .assert()
+        .success();
+
+    // symlink conflict: overwritten with a fresh symlink to the repo root.
+    assert!(repo.worktree_symlink_exists("wt-by-kind", "stale-symlink"));
+    assert_eq!(
+        std::fs::canonicalize(worktree_path.join("stale-symlink")).unwrap(),
+        std::fs::canonicalize(repo.path().join("stale-symlink-target")).unwrap()
+    );
+
+    // file conflict: left untouched, since the checked-out copy already
+    // satisfies the same content and on_conflict.file is "abort".
+    assert!(!repo.worktree_symlink_exists("wt-by-kind", "tracked-file.txt"));
+    assert_eq!(
+        std::fs::read_to_string(worktree_path.join("tracked-file.txt")).unwrap(),
+        "committed content\n"
+    );
+}

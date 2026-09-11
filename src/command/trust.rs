@@ -408,8 +408,8 @@ fn diff_list<T: Clone + PartialEq>(old: &[T], new: &[T]) -> (Vec<T>, Vec<T>, boo
     (removed, added, order_changed)
 }
 
-fn format_on_conflict(conflict: &config::OnConflict) -> String {
-    format!("{:?}", conflict).to_lowercase()
+fn format_on_conflict(conflict: &config::OnConflictSetting) -> String {
+    conflict.describe()
 }
 
 /// Display configuration diff between old snapshot and new config.
@@ -886,25 +886,38 @@ mod tests {
 
     #[test]
     fn test_format_on_conflict_abort() {
-        let result = format_on_conflict(&config::OnConflict::Abort);
+        let result = format_on_conflict(&config::OnConflictSetting::All(config::OnConflict::Abort));
         assert_eq!(result, "abort");
     }
 
     #[test]
     fn test_format_on_conflict_skip() {
-        let result = format_on_conflict(&config::OnConflict::Skip);
+        let result = format_on_conflict(&config::OnConflictSetting::All(config::OnConflict::Skip));
         assert_eq!(result, "skip");
     }
 
     #[test]
     fn test_format_on_conflict_overwrite() {
-        let result = format_on_conflict(&config::OnConflict::Overwrite);
+        let result = format_on_conflict(&config::OnConflictSetting::All(
+            config::OnConflict::Overwrite,
+        ));
         assert_eq!(result, "overwrite");
     }
 
     #[test]
     fn test_format_on_conflict_backup() {
-        let result = format_on_conflict(&config::OnConflict::Backup);
+        let result =
+            format_on_conflict(&config::OnConflictSetting::All(config::OnConflict::Backup));
         assert_eq!(result, "backup");
+    }
+
+    #[test]
+    fn test_format_on_conflict_by_kind() {
+        let setting = config::OnConflictSetting::ByKind(config::OnConflictByKind {
+            symlink: Some(config::OnConflict::Overwrite),
+            file: Some(config::OnConflict::Abort),
+        });
+        let result = format_on_conflict(&setting);
+        assert_eq!(result, "symlink=overwrite, file=abort");
     }
 }

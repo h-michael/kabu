@@ -152,7 +152,7 @@ fn validate_global_config(raw: &RawConfig) -> Result<()> {
     description = "Configuration file for kabu"
 )]
 pub(crate) struct RawConfig {
-    on_conflict: Option<OnConflict>,
+    on_conflict: Option<OnConflictSetting>,
     #[serde(default)]
     auto_cd: RawAutoCd,
     #[serde(default)]
@@ -358,7 +358,7 @@ struct RawLink {
     #[serde(default)]
     source: PathBuf,
     target: Option<PathBuf>,
-    on_conflict: Option<OnConflict>,
+    on_conflict: Option<OnConflictSetting>,
     description: Option<String>,
     #[serde(default)]
     skip_tracked: bool,
@@ -380,7 +380,7 @@ struct RawCopy {
     #[serde(default)]
     source: PathBuf,
     target: Option<PathBuf>,
-    on_conflict: Option<OnConflict>,
+    on_conflict: Option<OnConflictSetting>,
     description: Option<String>,
 }
 
@@ -389,7 +389,7 @@ struct RawCopy {
 /// Root configuration from .kabu/config.yaml.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Config {
-    pub on_conflict: Option<OnConflict>,
+    pub on_conflict: Option<OnConflictSetting>,
     pub auto_cd: AutoCd,
     pub worktree: Worktree,
     pub on_setup_failure: OnSetupFailure,
@@ -1203,7 +1203,7 @@ pub(crate) struct Mkdir {
 pub(crate) struct Link {
     pub source: PathBuf,
     pub target: PathBuf, // Always resolved (no Option)
-    pub on_conflict: Option<OnConflict>,
+    pub on_conflict: Option<OnConflictSetting>,
     pub description: Option<String>,
     pub skip_tracked: bool,
     pub exclude: Vec<String>,
@@ -1214,7 +1214,7 @@ pub(crate) struct Link {
 pub(crate) struct Copy {
     pub source: PathBuf,
     pub target: PathBuf, // Always resolved (no Option)
-    pub on_conflict: Option<OnConflict>,
+    pub on_conflict: Option<OnConflictSetting>,
     pub description: Option<String>,
 }
 
@@ -1230,6 +1230,85 @@ pub(crate) enum OnConflict {
     Skip,
     Overwrite,
     Backup,
+}
+
+impl OnConflict {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            OnConflict::Abort => "abort",
+            OnConflict::Skip => "skip",
+            OnConflict::Overwrite => "overwrite",
+            OnConflict::Backup => "backup",
+        }
+    }
+}
+
+/// The kind of filesystem entry a conflict was found at.
+///
+/// A symlink target is always safe to replace (it only ever touches the
+/// dirent in its parent directory, never whatever it points to), while a
+/// real file or directory conflict may hold content the user does not
+/// want silently overwritten. `OnConflictSetting::ByKind` lets a config
+/// treat the two differently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConflictKind {
+    Symlink,
+    File,
+}
+
+/// Conflict resolution mode, either applied uniformly or per conflict kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub(crate) enum OnConflictSetting {
+    /// Applies to every conflict, regardless of kind.
+    All(OnConflict),
+    /// Applies a different mode per conflict kind. A kind left unset
+    /// falls back to interactive prompt (or an error in non-interactive
+    /// mode), the same as leaving `on_conflict` unset entirely.
+    ByKind(OnConflictByKind),
+}
+
+/// Per-conflict-kind resolution modes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema, Default)]
+#[serde(deny_unknown_fields)]
+#[schemars(
+    title = "On Conflict By Kind",
+    description = "Conflict resolution mode per conflict kind"
+)]
+pub(crate) struct OnConflictByKind {
+    pub symlink: Option<OnConflict>,
+    pub file: Option<OnConflict>,
+}
+
+impl OnConflictSetting {
+    /// Resolve the effective mode for a specific conflict kind, if one is
+    /// configured for it.
+    pub(crate) fn resolve(&self, kind: ConflictKind) -> Option<OnConflict> {
+        match self {
+            OnConflictSetting::All(mode) => Some(*mode),
+            OnConflictSetting::ByKind(by_kind) => match kind {
+                ConflictKind::Symlink => by_kind.symlink,
+                ConflictKind::File => by_kind.file,
+            },
+        }
+    }
+
+    /// Human-readable description, used for `kabu config get` and trust diffs.
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            OnConflictSetting::All(mode) => mode.as_str().to_string(),
+            OnConflictSetting::ByKind(by_kind) => {
+                let mut parts = Vec::new();
+                if let Some(mode) = by_kind.symlink {
+                    parts.push(format!("symlink={}", mode.as_str()));
+                }
+                if let Some(mode) = by_kind.file {
+                    parts.push(format!("file={}", mode.as_str()));
+                }
+                parts.join(", ")
+            }
+        }
+    }
 }
 
 /// Behavior after removing a worktree when the current directory is removed.
@@ -1253,7 +1332,7 @@ pub(crate) enum AfterRemove {
 /// tracking (not just hooks) for comprehensive security coverage.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct ConfigSnapshot {
-    pub on_conflict: Option<OnConflict>,
+    pub on_conflict: Option<OnConflictSetting>,
     pub worktree: WorktreeSnapshot,
     pub hooks: Hooks,
     pub mkdir: Vec<MkdirSnapshot>,
@@ -1280,7 +1359,7 @@ pub(crate) struct MkdirSnapshot {
 pub(crate) struct LinkSnapshot {
     pub source: String,
     pub target: String,
-    pub on_conflict: Option<OnConflict>,
+    pub on_conflict: Option<OnConflictSetting>,
     pub description: Option<String>,
     pub skip_tracked: bool,
     pub exclude: Vec<String>,
@@ -1291,7 +1370,7 @@ pub(crate) struct LinkSnapshot {
 pub(crate) struct CopySnapshot {
     pub source: String,
     pub target: String,
-    pub on_conflict: Option<OnConflict>,
+    pub on_conflict: Option<OnConflictSetting>,
     pub description: Option<String>,
 }
 
@@ -1382,7 +1461,10 @@ copy:
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
 
-        assert_eq!(config.on_conflict, Some(OnConflict::Skip));
+        assert_eq!(
+            config.on_conflict,
+            Some(OnConflictSetting::All(OnConflict::Skip))
+        );
 
         assert_eq!(config.mkdir.len(), 1);
         assert_eq!(config.mkdir[0].path, PathBuf::from("tmp/cache"));
@@ -1392,14 +1474,20 @@ copy:
         );
 
         assert_eq!(config.link.len(), 2);
-        assert_eq!(config.link[1].on_conflict, Some(OnConflict::Abort));
+        assert_eq!(
+            config.link[1].on_conflict,
+            Some(OnConflictSetting::All(OnConflict::Abort))
+        );
         assert_eq!(
             config.link[1].description,
             Some("Link credentials".to_string())
         );
 
         assert_eq!(config.copy.len(), 1);
-        assert_eq!(config.copy[0].on_conflict, Some(OnConflict::Backup));
+        assert_eq!(
+            config.copy[0].on_conflict,
+            Some(OnConflictSetting::All(OnConflict::Backup))
+        );
     }
 
     #[test]
@@ -1513,6 +1601,71 @@ link:
             err.to_string()
                 .contains("only valid when source is a glob pattern")
         );
+    }
+
+    #[test]
+    fn test_parse_on_conflict_flat_string() {
+        let yaml = r#"
+on_conflict: overwrite
+
+link:
+  - source: ".env.local"
+        "#;
+
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(
+            config.on_conflict,
+            Some(OnConflictSetting::All(OnConflict::Overwrite))
+        );
+    }
+
+    #[test]
+    fn test_parse_on_conflict_by_kind() {
+        let yaml = r#"
+on_conflict:
+  symlink: overwrite
+  file: abort
+
+copy:
+  - source: ".claude/rules"
+    on_conflict:
+      symlink: overwrite
+      file: abort
+        "#;
+
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+
+        let expected = Some(OnConflictSetting::ByKind(OnConflictByKind {
+            symlink: Some(OnConflict::Overwrite),
+            file: Some(OnConflict::Abort),
+        }));
+        assert_eq!(config.on_conflict, expected);
+        assert_eq!(config.copy[0].on_conflict, expected);
+    }
+
+    #[test]
+    fn test_on_conflict_setting_resolve_all() {
+        let setting = OnConflictSetting::All(OnConflict::Skip);
+        assert_eq!(
+            setting.resolve(ConflictKind::Symlink),
+            Some(OnConflict::Skip)
+        );
+        assert_eq!(setting.resolve(ConflictKind::File), Some(OnConflict::Skip));
+    }
+
+    #[test]
+    fn test_on_conflict_setting_resolve_by_kind() {
+        let setting = OnConflictSetting::ByKind(OnConflictByKind {
+            symlink: Some(OnConflict::Overwrite),
+            file: None,
+        });
+        assert_eq!(
+            setting.resolve(ConflictKind::Symlink),
+            Some(OnConflict::Overwrite)
+        );
+        assert_eq!(setting.resolve(ConflictKind::File), None);
     }
 
     #[test]
@@ -2589,7 +2742,10 @@ on_conflict = "backup"
         let raw: RawConfig = toml::from_str(toml_content).unwrap();
         let config = Config::try_from(raw).unwrap();
 
-        assert_eq!(config.on_conflict, Some(OnConflict::Skip));
+        assert_eq!(
+            config.on_conflict,
+            Some(OnConflictSetting::All(OnConflict::Skip))
+        );
 
         assert_eq!(config.mkdir.len(), 1);
         assert_eq!(config.mkdir[0].path, PathBuf::from("tmp/cache"));
@@ -2599,14 +2755,20 @@ on_conflict = "backup"
         );
 
         assert_eq!(config.link.len(), 2);
-        assert_eq!(config.link[1].on_conflict, Some(OnConflict::Abort));
+        assert_eq!(
+            config.link[1].on_conflict,
+            Some(OnConflictSetting::All(OnConflict::Abort))
+        );
         assert_eq!(
             config.link[1].description,
             Some("Link credentials".to_string())
         );
 
         assert_eq!(config.copy.len(), 1);
-        assert_eq!(config.copy[0].on_conflict, Some(OnConflict::Backup));
+        assert_eq!(
+            config.copy[0].on_conflict,
+            Some(OnConflictSetting::All(OnConflict::Backup))
+        );
     }
 
     #[test]

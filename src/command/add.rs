@@ -6,12 +6,14 @@
 use crate::cli::AddArgs;
 use crate::color::{self, ColorConfig};
 use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
-use crate::config::{self, Config, Link, OnConflict};
+use crate::config::{self, Config, Link, OnConflict, OnConflictSetting};
 use crate::error::{Error, Result};
 use crate::hook::{self, HookEnv};
 use crate::interactive;
 use crate::interactive::ConflictChoice;
-use crate::operation::{self, ConflictAction, check_conflict, create_directory, resolve_conflict};
+use crate::operation::{
+    self, ConflictAction, check_conflict, conflict_kind, create_directory, resolve_conflict,
+};
 use crate::output::Output;
 use crate::vcs::{self, VcsProvider};
 
@@ -474,7 +476,7 @@ struct OperationParams<'a> {
     source: &'a Path,
     target: &'a Path,
     op_type: FileOp,
-    config_mode: Option<OnConflict>,
+    config_mode: Option<OnConflictSetting>,
     description: Option<&'a str>,
 }
 
@@ -498,10 +500,14 @@ fn process_operation(
 
     // Check for conflict
     if check_conflict(target) {
-        // Determine conflict mode
-        let mode = if let Some(mode) = *override_mode {
-            mode
-        } else if let Some(mode) = *config_mode {
+        // The override (from --on-conflict or a prior "apply to all"
+        // choice) always wins; otherwise fall back to the mode configured
+        // for this conflict's kind (symlink vs. real file/directory).
+        let kind = conflict_kind(target);
+        let configured =
+            (*override_mode).or_else(|| config_mode.as_ref().and_then(|s| s.resolve(kind)));
+
+        let mode = if let Some(mode) = configured {
             mode
         } else {
             // Prompt user
