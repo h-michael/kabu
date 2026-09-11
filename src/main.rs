@@ -42,6 +42,15 @@ fn main() -> ExitCode {
             let color_config = color::ColorConfig::new(color_choice);
             command::add(add_args, color_config)
         }
+        cli::Command::Setup(setup_args) => {
+            let color_choice = if setup_args.no_color {
+                clap::ColorChoice::Never
+            } else {
+                setup_args.color
+            };
+            let color_config = color::ColorConfig::new(color_choice);
+            command::setup(setup_args, color_config)
+        }
         cli::Command::Remove(remove_args) => {
             let color_choice = if remove_args.no_color {
                 clap::ColorChoice::Never

@@ -105,6 +105,21 @@ kabu add --dry-run ../feature-x
 kabu add --no-setup ../feature-x
 ```
 
+### Setup
+
+Re-run mkdir/link/copy from `.kabu` config against an existing worktree/workspace, so config changes propagate without recreating it. Does not run hooks or touch VCS state.
+
+```bash
+# Re-apply setup to the worktree/workspace containing the current directory
+kabu setup
+
+# Target a specific worktree/workspace
+kabu setup ../feature-x
+
+# Preview only
+kabu setup --dry-run ../feature-x
+```
+
 ### List
 
 ```bash

@@ -46,6 +46,9 @@ pub(crate) enum Command {
     /// Add a new worktree/workspace with setup
     Add(AddArgs),
 
+    /// Re-run mkdir/link/copy setup against an existing worktree/workspace
+    Setup(SetupArgs),
+
     /// Remove worktrees/workspaces with safety checks
     #[command(visible_alias = "rm")]
     Remove(RemoveArgs),
@@ -385,6 +388,66 @@ pub(crate) struct AddArgs {
     /// Do not guess remote
     #[arg(long, help_heading = "git worktree Options")]
     pub no_guess_remote: bool,
+
+    // --- Shared Options ---
+    /// Suppress output
+    #[arg(short, long, help_heading = "Shared Options")]
+    pub quiet: bool,
+
+    /// When to use colored output (always, auto, never)
+    #[arg(
+        long,
+        value_name = "WHEN",
+        default_value = "auto",
+        conflicts_with = "no_color",
+        help_heading = "Shared Options"
+    )]
+    pub color: clap::ColorChoice,
+
+    /// Disable colored output (equivalent to --color=never)
+    #[arg(long, help_heading = "Shared Options")]
+    pub no_color: bool,
+}
+
+/// Arguments for the `setup` subcommand.
+#[derive(Parser, Debug)]
+#[command(after_help = "\
+QUICK EXAMPLES:
+    kabu setup
+    kabu setup ../existing-worktree
+    kabu setup --dry-run ../existing-worktree
+    kabu setup --on-conflict overwrite
+
+WHAT THIS COMMAND DOES:
+    - Re-runs mkdir/link/copy from .kabu config against an existing
+      worktree/workspace, so config changes propagate without recreating it
+    - Does not run hooks (pre_add/post_add) and does not touch VCS state
+    - Idempotent: safe to run repeatedly
+
+TARGET SELECTION:
+    - [PATH] targets that worktree/workspace
+    - Omitted: targets the worktree/workspace containing the current directory
+
+SEE ALSO:
+    kabu add --help
+    kabu config --help")]
+pub(crate) struct SetupArgs {
+    /// Worktree/workspace to set up (defaults to the one containing the current directory)
+    pub path: Option<PathBuf>,
+
+    // --- kabu Options ---
+    /// How to handle conflicts: abort, skip, overwrite, backup
+    #[arg(
+        long,
+        value_name = "MODE",
+        help_heading = "kabu Options",
+        env = "KABU_ON_CONFLICT"
+    )]
+    pub on_conflict: Option<OnConflictArg>,
+
+    /// Preview actions without executing
+    #[arg(long, help_heading = "kabu Options")]
+    pub dry_run: bool,
 
     // --- Shared Options ---
     /// Suppress output
