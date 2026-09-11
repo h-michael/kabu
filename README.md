@@ -103,6 +103,9 @@ kabu add --dry-run ../feature-x
 
 # Skip setup and run only VCS add
 kabu add --no-setup ../feature-x
+
+# Show every mkdir/link/copy individually instead of a per-entry summary
+kabu add --verbose ../feature-x
 ```
 
 ### Setup

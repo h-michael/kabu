@@ -321,6 +321,10 @@ pub(crate) struct AddArgs {
     #[arg(long, help_heading = "kabu Options")]
     pub no_setup: bool,
 
+    /// Print every mkdir/link/copy individually instead of a per-entry summary
+    #[arg(long, help_heading = "kabu Options")]
+    pub verbose: bool,
+
     /// Windows-only: select hook shell (pwsh, powershell, bash, cmd, wsl)
     #[cfg(windows)]
     #[arg(
@@ -448,6 +452,10 @@ pub(crate) struct SetupArgs {
     /// Preview actions without executing
     #[arg(long, help_heading = "kabu Options")]
     pub dry_run: bool,
+
+    /// Print every mkdir/link/copy individually instead of a per-entry summary
+    #[arg(long, help_heading = "kabu Options")]
+    pub verbose: bool,
 
     // --- Shared Options ---
     /// Suppress output

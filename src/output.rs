@@ -120,6 +120,36 @@ impl Output {
         self.print_file_op("Copying", source, target, description);
     }
 
+    /// Print a per-entry summary for multiple clean (no-conflict) link
+    /// operations from a single glob-expanding config entry, instead of
+    /// one line per file.
+    pub fn link_summary(&self, count: usize, source_pattern: &str) {
+        self.print_summary("Linked", count, source_pattern);
+    }
+
+    /// Print a per-entry summary for multiple clean (no-conflict) copy
+    /// operations from a single glob-expanding config entry, instead of
+    /// one line per file.
+    pub fn copy_summary(&self, count: usize, source_pattern: &str) {
+        self.print_summary("Copied", count, source_pattern);
+    }
+
+    fn print_summary(&self, op: &str, count: usize, source_pattern: &str) {
+        if self.quiet {
+            return;
+        }
+        if self.color.is_enabled() {
+            println!(
+                "{}: {} items ({})",
+                ColorScheme::operation(op),
+                count,
+                ColorScheme::path(source_pattern)
+            );
+        } else {
+            println!("{op}: {count} items ({source_pattern})");
+        }
+    }
+
     /// Print skip message.
     pub fn skip(&self, path: &std::path::Path) {
         if !self.quiet {

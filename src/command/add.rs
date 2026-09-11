@@ -181,8 +181,11 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
     // Process links and copies with rollback on failure
     if let Err(e) = run_setup(
-        args.on_conflict,
-        args.dry_run,
+        SetupOptions {
+            on_conflict: args.on_conflict,
+            dry_run: args.dry_run,
+            verbose: args.verbose,
+        },
         &config,
         &repo_root,
         &worktree_path,
@@ -387,18 +390,30 @@ fn run_interactive(
     Ok(worktree_path)
 }
 
+/// CLI-derived options shared by `add` and `setup` when running setup.
+pub(crate) struct SetupOptions {
+    pub on_conflict: Option<crate::cli::OnConflictArg>,
+    pub dry_run: bool,
+    pub verbose: bool,
+}
+
 /// Run the setup operations (mkdir, symlinks and copies) against a
 /// worktree/workspace. Shared by `add` (right after creation) and `setup`
 /// (replayed against an existing one).
 pub(crate) fn run_setup(
-    on_conflict: Option<crate::cli::OnConflictArg>,
-    dry_run: bool,
+    options: SetupOptions,
     config: &Config,
     repo_root: &Path,
     worktree_path: &Path,
     output: &Output,
     provider: &dyn VcsProvider,
 ) -> Result<()> {
+    let SetupOptions {
+        on_conflict,
+        dry_run,
+        verbose,
+    } = options;
+
     let mut conflict_mode_override: Option<OnConflict> = on_conflict.map(|m| match m {
         crate::cli::OnConflictArg::Abort => OnConflict::Abort,
         crate::cli::OnConflictArg::Skip => OnConflict::Skip,
@@ -425,27 +440,36 @@ pub(crate) fn run_setup(
     let mut tracked_cache: Option<TrackedCache> = None;
     for link in &config.link {
         let expanded_links = expand_link(link, repo_root, provider, &mut tracked_cache)?;
+        let mut clean: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
         for expanded_link in expanded_links {
+            let source = repo_root.join(&expanded_link.source);
+            let target = worktree_path.join(&expanded_link.target);
             let params = OperationParams {
-                source: &repo_root.join(&expanded_link.source),
-                target: &worktree_path.join(&expanded_link.target),
+                source: &source,
+                target: &target,
                 op_type: FileOp::Link,
                 config_mode: expanded_link.on_conflict.or(config.on_conflict),
                 description: expanded_link.description.as_deref(),
             };
-            process_operation(
+            let was_clean = process_operation(
                 &params,
                 worktree_path,
                 &mut conflict_mode_override,
                 dry_run,
+                verbose,
                 output,
             )?;
+            if was_clean {
+                clean.push((source, target, expanded_link.description.clone()));
+            }
         }
+        summarize_clean_operations(output, dry_run, verbose, FileOp::Link, &link.source, &clean);
     }
 
     // Process copies (expand glob patterns first)
     for copy in &config.copy {
         let expanded_copies = expand_copy(copy, repo_root)?;
+        let mut clean: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
         for expanded_copy in expanded_copies {
             let source = repo_root.join(&expanded_copy.source);
             let target = worktree_path.join(&expanded_copy.target);
@@ -456,23 +480,61 @@ pub(crate) fn run_setup(
                 config_mode: expanded_copy.on_conflict.or(config.on_conflict),
                 description: expanded_copy.description.as_deref(),
             };
-            process_operation(
+            let was_clean = process_operation(
                 &params,
                 worktree_path,
                 &mut conflict_mode_override,
                 dry_run,
+                verbose,
                 output,
             )?;
+            if was_clean {
+                clean.push((source, target, expanded_copy.description.clone()));
+            }
         }
+        summarize_clean_operations(output, dry_run, verbose, FileOp::Copy, &copy.source, &clean);
     }
 
     Ok(())
 }
 
 /// File operation type.
+#[derive(Debug, Clone, Copy)]
 enum FileOp {
     Link,
     Copy,
+}
+
+/// Print a per-entry summary for the clean (no-conflict) operations
+/// belonging to one config entry, unless already printed individually
+/// (dry-run and --verbose print every operation as it happens).
+/// A single clean operation still prints its normal single-item line,
+/// so plain, non-glob entries look exactly as they always have.
+fn summarize_clean_operations(
+    output: &Output,
+    dry_run: bool,
+    verbose: bool,
+    op_type: FileOp,
+    source_pattern: &Path,
+    clean: &[(PathBuf, PathBuf, Option<String>)],
+) {
+    if dry_run || verbose || clean.is_empty() {
+        return;
+    }
+
+    if let [(source, target, description)] = clean {
+        match op_type {
+            FileOp::Link => output.link(source, target, description.as_deref()),
+            FileOp::Copy => output.copy(source, target, description.as_deref()),
+        }
+        return;
+    }
+
+    let source_pattern = source_pattern.to_string_lossy();
+    match op_type {
+        FileOp::Link => output.link_summary(clean.len(), &source_pattern),
+        FileOp::Copy => output.copy_summary(clean.len(), &source_pattern),
+    }
 }
 
 /// Parameters for a file operation.
@@ -485,13 +547,19 @@ struct OperationParams<'a> {
 }
 
 /// Process a single operation (symlink or copy) with conflict handling.
+///
+/// Returns `Ok(true)` when the operation completed with no conflict and
+/// wasn't already printed (dry-run and conflicts always print
+/// individually), so the caller can fold it into a per-entry summary
+/// line instead of printing it here.
 fn process_operation(
     params: &OperationParams,
     worktree_root: &Path,
     override_mode: &mut Option<OnConflict>,
     dry_run: bool,
+    verbose: bool,
     output: &Output,
-) -> Result<()> {
+) -> Result<bool> {
     let OperationParams {
         source,
         target,
@@ -502,8 +570,12 @@ fn process_operation(
 
     operation::ensure_within_worktree(target, worktree_root)?;
 
+    let mut had_conflict = false;
+
     // Check for conflict
     if check_conflict(target) {
+        had_conflict = true;
+
         // The override (from --on-conflict or a prior "apply to all"
         // choice) always wins; otherwise fall back to the mode configured
         // for this conflict's kind (symlink vs. real file/directory).
@@ -528,7 +600,7 @@ fn process_operation(
             ConflictAction::Abort => return Err(Error::Aborted),
             ConflictAction::Skip => {
                 output.skip(target);
-                return Ok(());
+                return Ok(false);
             }
             ConflictAction::Proceed => {
                 // Continue with operation
@@ -548,20 +620,25 @@ fn process_operation(
             source.display(),
             target.display()
         ));
-    } else {
+        return Ok(false);
+    }
+
+    match op_type {
+        FileOp::Link => operation::create_symlink(source, target)?,
+        FileOp::Copy => operation::copy_file(source, target)?,
+    }
+
+    // A conflict is always worth calling out individually, even resolved
+    // ones; a clean operation is only printed here in --verbose mode,
+    // otherwise the caller folds it into a per-entry summary.
+    if verbose || had_conflict {
         match op_type {
-            FileOp::Link => {
-                operation::create_symlink(source, target)?;
-                output.link(source, target, *description);
-            }
-            FileOp::Copy => {
-                operation::copy_file(source, target)?;
-                output.copy(source, target, *description);
-            }
+            FileOp::Link => output.link(source, target, *description),
+            FileOp::Copy => output.copy(source, target, *description),
         }
     }
 
-    Ok(())
+    Ok(!had_conflict)
 }
 
 /// Check if a path contains glob patterns.

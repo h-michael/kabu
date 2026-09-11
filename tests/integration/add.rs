@@ -352,6 +352,63 @@ fn test_add_with_glob_pattern() {
 }
 
 #[test]
+fn test_add_summarizes_clean_glob_links() {
+    let repo = TestRepo::with_config(
+        r#"
+link:
+  - source: "fixtures/*"
+    description: fixtures
+"#,
+    );
+
+    // Untracked, so the worktree checkout doesn't already have them and
+    // every link is a clean (no-conflict) operation, eligible for the
+    // per-entry summary.
+    repo.create_file("fixtures/one.txt", "1\n");
+    repo.create_file("fixtures/two.txt", "2\n");
+    repo.create_file("fixtures/three.txt", "3\n");
+
+    let worktree_path = repo.worktree_path("summary-test");
+
+    repo.kabu()
+        .args(["add", worktree_path.to_str().unwrap(), "-b", "summary-test"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Linked: 3 items"))
+        .stdout(predicate::str::contains("Linking:").not());
+}
+
+#[test]
+fn test_add_verbose_lists_each_clean_link_individually() {
+    let repo = TestRepo::with_config(
+        r#"
+link:
+  - source: "fixtures/*"
+    description: fixtures
+"#,
+    );
+
+    repo.create_file("fixtures/one.txt", "1\n");
+    repo.create_file("fixtures/two.txt", "2\n");
+
+    let worktree_path = repo.worktree_path("verbose-test");
+
+    repo.kabu()
+        .args([
+            "add",
+            worktree_path.to_str().unwrap(),
+            "-b",
+            "verbose-test",
+            "--verbose",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Linking: one.txt"))
+        .stdout(predicate::str::contains("Linking: two.txt"))
+        .stdout(predicate::str::contains("Linked:").not());
+}
+
+#[test]
 fn test_add_with_glob_skip_tracked() {
     let mut repo = TestRepo::with_config(CONFIG_WITH_GLOB_IGNORE_TRACKED);
 

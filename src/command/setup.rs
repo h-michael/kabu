@@ -7,7 +7,7 @@
 
 use crate::cli::SetupArgs;
 use crate::color::{self, ColorConfig};
-use crate::command::add::run_setup;
+use crate::command::add::{SetupOptions, run_setup};
 use crate::command::remove::{find_current_worktree, resolve_worktree_paths};
 use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::error::{Error, Result};
@@ -45,8 +45,11 @@ pub(crate) fn run(args: SetupArgs, color: ColorConfig) -> Result<()> {
     };
 
     run_setup(
-        args.on_conflict,
-        args.dry_run,
+        SetupOptions {
+            on_conflict: args.on_conflict,
+            dry_run: args.dry_run,
+            verbose: args.verbose,
+        },
         &config,
         &repo_root,
         &target,
