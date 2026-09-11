@@ -440,7 +440,7 @@ pub(crate) fn run_setup(
     let mut tracked_cache: Option<TrackedCache> = None;
     for link in &config.link {
         let expanded_links = expand_link(link, repo_root, provider, &mut tracked_cache)?;
-        let mut created: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
+        let mut created: Vec<CreatedOp> = Vec::new();
         let mut already_linked: Vec<PathBuf> = Vec::new();
         for expanded_link in expanded_links {
             let source = repo_root.join(&expanded_link.source);
@@ -481,7 +481,7 @@ pub(crate) fn run_setup(
     // Process copies (expand glob patterns first)
     for copy in &config.copy {
         let expanded_copies = expand_copy(copy, repo_root)?;
-        let mut created: Vec<(PathBuf, PathBuf, Option<String>)> = Vec::new();
+        let mut created: Vec<CreatedOp> = Vec::new();
         let mut up_to_date: Vec<PathBuf> = Vec::new();
         for expanded_copy in expanded_copies {
             let source = repo_root.join(&expanded_copy.source);
@@ -531,6 +531,10 @@ enum FileOp {
     Copy,
 }
 
+/// (source, target, description) for a completed clean create, batched for
+/// per-entry summary printing.
+type CreatedOp = (PathBuf, PathBuf, Option<String>);
+
 /// Outcome of a single link/copy operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OperationOutcome {
@@ -559,7 +563,7 @@ fn summarize_clean_operations(
     verbose: bool,
     op_type: FileOp,
     source_pattern: &Path,
-    clean: &[(PathBuf, PathBuf, Option<String>)],
+    clean: &[CreatedOp],
 ) {
     if dry_run || verbose || clean.is_empty() {
         return;
@@ -651,23 +655,25 @@ fn process_operation(
     // common case (e.g. `kabu setup` across many worktrees set up before
     // a config change): a symlink already pointing at the intended
     // source needs no change, regardless of on_conflict.
-    if matches!(op_type, FileOp::Link)
-        && let (Ok(existing), Ok(intended)) =
-            (std::fs::canonicalize(target), std::fs::canonicalize(source))
-        && existing == intended
-    {
+    if matches!(op_type, FileOp::Link) && operation::link_is_up_to_date(source, target) {
         if verbose {
             output.already_linked(target);
         }
         return Ok(OperationOutcome::AlreadyLinked);
     }
 
+    // Cached rather than re-checked before the clean-create branch below:
+    // narrows a pre-existing TOCTOU window (the actual write still happens
+    // later) but does not introduce a new one for this single-process CLI,
+    // where nothing else is expected to touch `target` mid-run.
+    let target_conflicts = check_conflict(target);
+
     // Same idea for copy: a target whose content already matches the
     // source needs no change. Checked only when there's something there
     // to compare against; `is_up_to_date` itself never treats a symlink
     // target as up to date, since replacing it is handled as a conflict.
     if matches!(op_type, FileOp::Copy)
-        && check_conflict(target)
+        && target_conflicts
         && operation::is_up_to_date(source, target)
     {
         if verbose {
@@ -676,7 +682,7 @@ fn process_operation(
         return Ok(OperationOutcome::AlreadyUpToDate);
     }
 
-    if !check_conflict(target) {
+    if !target_conflicts {
         if dry_run {
             let op_name = match op_type {
                 FileOp::Link => "link",
@@ -691,16 +697,7 @@ fn process_operation(
             return Ok(OperationOutcome::Reported);
         }
 
-        match op_type {
-            FileOp::Link => operation::create_symlink(source, target)?,
-            FileOp::Copy => operation::copy_file(source, target)?,
-        }
-        if verbose {
-            match op_type {
-                FileOp::Link => output.link(source, target, *description),
-                FileOp::Copy => output.copy(source, target, *description),
-            }
-        }
+        perform_operation(*op_type, source, target, *description, verbose, output)?;
         return Ok(OperationOutcome::Created);
     }
 
@@ -750,17 +747,32 @@ fn process_operation(
         ConflictAction::Proceed => {}
     }
 
+    // A resolved conflict is always worth calling out individually.
+    perform_operation(*op_type, source, target, *description, true, output)?;
+
+    Ok(OperationOutcome::Reported)
+}
+
+/// Perform a symlink/copy operation and, if `report` is set, print it.
+fn perform_operation(
+    op_type: FileOp,
+    source: &Path,
+    target: &Path,
+    description: Option<&str>,
+    report: bool,
+    output: &Output,
+) -> Result<()> {
     match op_type {
         FileOp::Link => operation::create_symlink(source, target)?,
         FileOp::Copy => operation::copy_file(source, target)?,
     }
-    // A resolved conflict is always worth calling out individually.
-    match op_type {
-        FileOp::Link => output.link(source, target, *description),
-        FileOp::Copy => output.copy(source, target, *description),
+    if report {
+        match op_type {
+            FileOp::Link => output.link(source, target, description),
+            FileOp::Copy => output.copy(source, target, description),
+        }
     }
-
-    Ok(OperationOutcome::Reported)
+    Ok(())
 }
 
 /// Check if a path contains glob patterns.
