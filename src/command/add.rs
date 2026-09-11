@@ -633,6 +633,23 @@ fn expand_link(
         None
     };
 
+    // Exclude patterns match relative to the glob's literal prefix, so
+    // `source: ".claude/*"` + `exclude: ["CLAUDE.md"]` matches "CLAUDE.md",
+    // not ".claude/CLAUDE.md".
+    let exclude_matchers: Vec<globset::GlobMatcher> = link
+        .exclude
+        .iter()
+        .map(|pattern| {
+            globset::GlobBuilder::new(pattern)
+                .literal_separator(true)
+                .build()
+                .map(|g| g.compile_matcher())
+                .map_err(|e| Error::ConfigValidation {
+                    message: format!("Invalid exclude pattern '{}': {}", pattern, e),
+                })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
     // Walk the repository and find matching files and directories
     // Collect matched directories to avoid processing their contents
     let mut matched_dirs: HashSet<PathBuf> = HashSet::new();
@@ -683,6 +700,16 @@ fn expand_link(
             if is_dir && cache.dirs.contains(rel_path) {
                 continue;
             }
+        }
+
+        // Skip if it matches an exclude pattern, relative to the glob's
+        // literal prefix.
+        let rel_to_prefix = rel_path.strip_prefix(&prefix).unwrap_or(rel_path);
+        if exclude_matchers.iter().any(|m| m.is_match(rel_to_prefix)) {
+            if is_dir {
+                matched_dirs.insert(rel_path.to_path_buf());
+            }
+            continue;
         }
 
         // If it's a directory, add to matched_dirs to skip its contents
@@ -857,6 +884,7 @@ mod impure_tests {
             on_conflict: None,
             description: None,
             skip_tracked: false,
+            exclude: vec![],
         };
 
         let provider = vcs::GitProvider;
@@ -883,6 +911,7 @@ mod impure_tests {
             on_conflict: None,
             description: None,
             skip_tracked: false,
+            exclude: vec![],
         };
 
         let provider = vcs::GitProvider;
@@ -956,6 +985,7 @@ mod impure_tests {
             on_conflict: None,
             description: None,
             skip_tracked: true,
+            exclude: vec![],
         };
 
         let provider = vcs::GitProvider;
@@ -1043,6 +1073,7 @@ mod impure_tests {
             on_conflict: None,
             description: None,
             skip_tracked: true,
+            exclude: vec![],
         };
 
         let provider = vcs::GitProvider;
@@ -1081,6 +1112,7 @@ mod impure_tests {
             on_conflict: None,
             description: None,
             skip_tracked: false,
+            exclude: vec![],
         };
 
         let provider = vcs::GitProvider;
@@ -1112,6 +1144,7 @@ mod impure_tests {
             on_conflict: None,
             description: None,
             skip_tracked: false,
+            exclude: vec![],
         };
 
         let provider = vcs::GitProvider;
@@ -1124,6 +1157,34 @@ mod impure_tests {
         sources.sort();
         assert_eq!(sources[0], PathBuf::from("dir1"));
         assert_eq!(sources[1], PathBuf::from("dir2"));
+    }
+
+    #[test]
+    fn test_expand_link_with_exclude() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let repo_root = temp_dir.path();
+
+        std::fs::create_dir_all(repo_root.join(".claude/rules")).unwrap();
+        std::fs::write(repo_root.join(".claude/rules/a.md"), "a").unwrap();
+        std::fs::write(repo_root.join(".claude/CLAUDE.md"), "claude").unwrap();
+        std::fs::write(repo_root.join(".claude/settings.json"), "{}").unwrap();
+
+        let link = Link {
+            source: PathBuf::from(".claude/*"),
+            target: PathBuf::from(".claude/*"),
+            on_conflict: None,
+            description: None,
+            skip_tracked: false,
+            exclude: vec!["CLAUDE.md".to_string(), "rules".to_string()],
+        };
+
+        let provider = vcs::GitProvider;
+        let result = expand_link(&link, repo_root, &provider, &mut None).unwrap();
+
+        let mut sources: Vec<_> = result.iter().map(|l| l.source.clone()).collect();
+        sources.sort();
+        assert_eq!(sources, vec![PathBuf::from(".claude/settings.json")]);
     }
 
     #[test]

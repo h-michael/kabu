@@ -214,6 +214,14 @@
             "null"
           ]
         },
+        "exclude": {
+          "description": "Glob patterns to exclude from a glob `source`, matched relative to the glob's literal prefix (e.g. source: \".claude/*\", exclude: [\"CLAUDE.md\"] matches \"CLAUDE.md\", not \".claude/CLAUDE.md\"). Only valid when `source` contains a glob pattern.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
         "on_conflict": {
           "anyOf": [
             {

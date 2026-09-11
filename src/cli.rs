@@ -111,6 +111,8 @@ CONFIG KEYS (TOP LEVEL):
       - source: string
         target: string (optional; default = source)
         skip_tracked: bool (optional; default = false)
+        exclude: list of glob strings (optional; only valid when source
+                 is a glob, matched relative to source's literal prefix)
         on_conflict: abort | skip | overwrite | backup (optional)
         description: string (optional)
     copy:
