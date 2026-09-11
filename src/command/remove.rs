@@ -212,7 +212,7 @@ pub(crate) fn resolve_worktree_paths(
     Ok(resolved)
 }
 
-fn is_main_worktree(path: &PathBuf, worktrees: &[WorkspaceInfo]) -> bool {
+pub(crate) fn is_main_worktree(path: &PathBuf, worktrees: &[WorkspaceInfo]) -> bool {
     worktrees
         .iter()
         .find(|wt| &wt.path == path)

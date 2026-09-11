@@ -83,6 +83,12 @@ pub(crate) enum Error {
     #[error("The main worktree/workspace cannot be removed.\n  Path: {}", .path.display())]
     CannotRemoveMainWorktree { path: PathBuf },
 
+    #[error(
+        "kabu setup cannot target the main worktree/workspace, since source and target paths would be identical.\n  Path: {}",
+        .path.display()
+    )]
+    CannotSetupMainWorkspace { path: PathBuf },
+
     #[error("No worktrees/workspaces available to remove")]
     NoWorktreesToRemove,
 

@@ -156,3 +156,182 @@ link:
 
     assert!(repo.worktree_symlink_exists("wt-setup-overwrite", "local.env"));
 }
+
+#[test]
+fn test_setup_is_idempotent_for_correct_symlinks() {
+    let mut repo = TestRepo::with_config(
+        r#"
+link:
+  - source: note.txt
+"#,
+    );
+    repo.create_file("note.txt", "content\n");
+
+    let worktree_path = repo.worktree_path("wt-idempotent");
+
+    repo.kabu()
+        .args([
+            "add",
+            worktree_path.to_str().unwrap(),
+            "-b",
+            "wt-idempotent",
+        ])
+        .assert()
+        .success();
+    repo.register_worktree(worktree_path.clone());
+
+    assert!(repo.worktree_symlink_exists("wt-idempotent", "note.txt"));
+
+    // Re-running setup with no on_conflict configured must not treat an
+    // already-correct symlink as a conflict (which would otherwise
+    // require a decision and fail non-interactively).
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already linked"));
+
+    assert!(repo.worktree_symlink_exists("wt-idempotent", "note.txt"));
+}
+
+#[test]
+fn test_setup_dry_run_reports_already_linked() {
+    // A dry-run preview must report the same "already linked" state a
+    // real run would, so a user can compare the two: an already-correct
+    // symlink has no "would change" line of its own to stand in for it.
+    let mut repo = TestRepo::with_config(
+        r#"
+link:
+  - source: note.txt
+"#,
+    );
+    repo.create_file("note.txt", "content\n");
+
+    let worktree_path = repo.worktree_path("wt-dry-run-parity");
+
+    repo.kabu()
+        .args([
+            "add",
+            worktree_path.to_str().unwrap(),
+            "-b",
+            "wt-dry-run-parity",
+        ])
+        .assert()
+        .success();
+    repo.register_worktree(worktree_path.clone());
+
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap(), "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already linked"))
+        .stdout(predicate::str::contains("Would link").not());
+}
+
+#[test]
+fn test_setup_dry_run_never_prompts_and_never_mutates() {
+    let repo = TestRepo::with_config(
+        r#"
+link:
+  - source: tracked.txt
+"#,
+    );
+    repo.create_file_and_commit("tracked.txt", "original\n", "Add tracked.txt");
+
+    let worktree_path = repo.worktree_path("wt-dry-run-conflict");
+
+    std::process::Command::new("git")
+        .current_dir(repo.path())
+        .args([
+            "worktree",
+            "add",
+            worktree_path.to_str().unwrap(),
+            "-b",
+            "wt-dry-run-conflict",
+        ])
+        .output()
+        .expect("Failed to create worktree");
+
+    // The checked-out tracked.txt is a real-file conflict with no
+    // on_conflict configured. A --dry-run preview must not require an
+    // interactive decision or touch the file, even though a real (non
+    // dry-run) run would have to prompt or error.
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap(), "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Would prompt"));
+
+    assert_eq!(
+        std::fs::read_to_string(worktree_path.join("tracked.txt")).unwrap(),
+        "original\n"
+    );
+}
+
+#[test]
+fn test_setup_rejects_main_workspace() {
+    let repo = TestRepo::with_config(MINIMAL_CONFIG);
+
+    repo.kabu()
+        .arg("setup")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("main worktree/workspace"));
+}
+
+#[test]
+fn test_setup_copy_reports_up_to_date_and_dry_run_matches() {
+    let mut repo = TestRepo::with_config(
+        r#"
+on_conflict: overwrite
+
+copy:
+  - source: rules
+"#,
+    );
+    repo.create_file("rules/a.md", "rule a\n");
+    repo.create_file("rules/b.md", "rule b\n");
+
+    let worktree_path = repo.worktree_path("wt-copy-up-to-date");
+
+    repo.kabu()
+        .args([
+            "add",
+            worktree_path.to_str().unwrap(),
+            "-b",
+            "wt-copy-up-to-date",
+        ])
+        .assert()
+        .success();
+    repo.register_worktree(worktree_path.clone());
+
+    // Re-running setup against an already-matching copy target must not
+    // treat it as a conflict, and dry-run must report the same thing a
+    // real run would.
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap(), "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already up to date"))
+        .stdout(predicate::str::contains("Would overwrite").not());
+
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already up to date"));
+
+    // A stale extra file in the worktree copy means it's no longer up to
+    // date, and setup should replace the whole directory (drop the stale
+    // file) rather than leaving it in place.
+    std::fs::write(worktree_path.join("rules/stale.md"), "old rule\n").unwrap();
+
+    repo.kabu()
+        .args(["setup", worktree_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Copying: rules"));
+
+    assert!(!worktree_path.join("rules/stale.md").exists());
+    assert!(worktree_path.join("rules/a.md").exists());
+}

@@ -103,11 +103,14 @@ kabu add --dry-run ../feature-x
 
 # Skip setup and run only VCS add
 kabu add --no-setup ../feature-x
+
+# Show every mkdir/link/copy individually instead of a per-entry summary
+kabu add --verbose ../feature-x
 ```
 
 ### Setup
 
-Re-run mkdir/link/copy from `.kabu` config against an existing worktree/workspace, so config changes propagate without recreating it. Does not run hooks or touch VCS state.
+Re-run mkdir/link/copy from `.kabu` config against an existing worktree/workspace, so config changes propagate without recreating it. Safe to run repeatedly: a `link` target that already points at the right source, or a `copy` target with matching content, is left alone rather than treated as a conflict. Does not run hooks or touch VCS state.
 
 ```bash
 # Re-apply setup to the worktree/workspace containing the current directory

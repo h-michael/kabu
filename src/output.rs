@@ -120,6 +120,84 @@ impl Output {
         self.print_file_op("Copying", source, target, description);
     }
 
+    /// Print a per-entry summary for multiple clean (no-conflict) link
+    /// operations from a single glob-expanding config entry, instead of
+    /// one line per file.
+    pub fn link_summary(&self, count: usize, source_pattern: &str) {
+        self.print_summary("Linked", count, source_pattern);
+    }
+
+    /// Print a per-entry summary for multiple clean (no-conflict) copy
+    /// operations from a single glob-expanding config entry, instead of
+    /// one line per file.
+    pub fn copy_summary(&self, count: usize, source_pattern: &str) {
+        self.print_summary("Copied", count, source_pattern);
+    }
+
+    /// Print a single already-correctly-linked target: a symlink that
+    /// already pointed at the intended source, so nothing changed.
+    pub fn already_linked(&self, target: &std::path::Path) {
+        if self.quiet {
+            return;
+        }
+        if self.color.is_enabled() {
+            println!(
+                "{}: {}",
+                ColorScheme::dimmed("Already linked"),
+                ColorScheme::path(&target.display().to_string())
+            );
+        } else {
+            println!("Already linked: {}", target.display());
+        }
+    }
+
+    /// Print a per-entry summary for multiple already-correctly-linked
+    /// targets from a single glob-expanding config entry, instead of one
+    /// line per file. This is the common case when re-running `kabu
+    /// setup` against worktrees that were already set up.
+    pub fn already_linked_summary(&self, count: usize, source_pattern: &str) {
+        self.print_summary("Already linked", count, source_pattern);
+    }
+
+    /// Print a single copy target whose content already matched the
+    /// source, so nothing changed.
+    pub fn up_to_date(&self, target: &std::path::Path) {
+        if self.quiet {
+            return;
+        }
+        if self.color.is_enabled() {
+            println!(
+                "{}: {}",
+                ColorScheme::dimmed("Already up to date"),
+                ColorScheme::path(&target.display().to_string())
+            );
+        } else {
+            println!("Already up to date: {}", target.display());
+        }
+    }
+
+    /// Print a per-entry summary for multiple copy targets that already
+    /// matched their source, instead of one line per file.
+    pub fn up_to_date_summary(&self, count: usize, source_pattern: &str) {
+        self.print_summary("Already up to date", count, source_pattern);
+    }
+
+    fn print_summary(&self, op: &str, count: usize, source_pattern: &str) {
+        if self.quiet {
+            return;
+        }
+        if self.color.is_enabled() {
+            println!(
+                "{}: {} items ({})",
+                ColorScheme::operation(op),
+                count,
+                ColorScheme::path(source_pattern)
+            );
+        } else {
+            println!("{op}: {count} items ({source_pattern})");
+        }
+    }
+
     /// Print skip message.
     pub fn skip(&self, path: &std::path::Path) {
         if !self.quiet {

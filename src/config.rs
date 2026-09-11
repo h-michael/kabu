@@ -1256,6 +1256,15 @@ pub(crate) enum ConflictKind {
     File,
 }
 
+impl ConflictKind {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            ConflictKind::Symlink => "symlink",
+            ConflictKind::File => "file",
+        }
+    }
+}
+
 /// Conflict resolution mode, either applied uniformly or per conflict kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]

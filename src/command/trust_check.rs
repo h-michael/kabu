@@ -9,7 +9,12 @@ use std::path::Path;
 
 pub(crate) enum TrustHint {
     None,
-    SkipHooks { command: &'static str },
+    /// Used when the trust check runs before the worktree/workspace is
+    /// created (currently only `add`), so the abort message can say so
+    /// instead of leaving callers to check with `kabu list`.
+    SkipHooks {
+        command: &'static str,
+    },
 }
 
 pub(crate) fn load_config_with_trust_check(
@@ -34,6 +39,9 @@ pub(crate) fn load_config_with_trust_check(
         eprintln!("{}", ColorScheme::error("Configuration is not trusted."));
         eprintln!("The config file contains hooks that can execute arbitrary commands.");
         eprintln!("For security, you must explicitly review and trust the configuration.");
+        if let TrustHint::SkipHooks { .. } = &hint {
+            eprintln!("No worktree/workspace was created.");
+        }
         eprintln!();
         eprintln!("To trust this configuration, run:");
         eprintln!("  kabu trust");
@@ -60,6 +68,9 @@ pub(crate) fn load_config_with_trust_check(
             ColorScheme::error("Config file was modified after trust check.")
         );
         eprintln!("For security, configuration must be re-trusted after any changes.");
+        if let TrustHint::SkipHooks { .. } = &hint {
+            eprintln!("No worktree/workspace was created.");
+        }
         eprintln!("Run: kabu trust");
         return Err(Error::HooksNotTrusted);
     }

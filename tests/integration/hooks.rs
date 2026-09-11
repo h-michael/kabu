@@ -18,7 +18,10 @@ fn test_hooks_require_trust() {
         ])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("trust").or(predicate::str::contains("untrusted")));
+        .stderr(predicate::str::contains("trust").or(predicate::str::contains("untrusted")))
+        .stderr(predicate::str::contains(
+            "No worktree/workspace was created",
+        ));
 
     // Worktree should not be created
     assert!(!worktree_path.exists());
