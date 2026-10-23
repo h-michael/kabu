@@ -27,7 +27,7 @@ mod remove;
 mod select;
 mod worktree_list;
 
-pub(crate) use add::{AddInteractiveInput, WorktreeSummary, run_add_interactive};
+pub(crate) use add::{AddInteractiveInput, WorktreeSummary, normalize_path, run_add_interactive};
 pub(crate) use conflict::{ConflictChoice, prompt_conflict};
 pub(crate) use path::run_path_interactive;
 pub(crate) use remove::{SafetyWarning, run_remove_confirmation, run_remove_selection};

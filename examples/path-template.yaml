@@ -4,6 +4,8 @@
 # Run: kabu add -b feature/login
 # Expected effect: If path is omitted, kabu suggests/uses template-based paths.
 # Pitfall: Use `{{...}}` placeholders, not single braces like `{branch}`.
+# Note: A relative template is resolved against the main worktree root, not the
+#       directory where `kabu add` runs.
 
 worktree:
   path_template: ../worktrees/{{repository}}/{{branch}}

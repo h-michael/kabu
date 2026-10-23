@@ -141,6 +141,7 @@ CONFIG KEYS (TOP LEVEL):
 TEMPLATE VARIABLES:
     worktree.path_template:
       {{branch}}, {{repository}}
+      (a relative result is resolved against the main worktree root)
     worktree.branch_template:
       {{commitish}}, {{repository}}, {{strftime(...)}} (e.g. {{strftime(%Y%m%d)}})
     hooks.command:

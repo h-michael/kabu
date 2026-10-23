@@ -1576,7 +1576,7 @@ fn path_fs_error(resolved: Option<&PathBuf>) -> Option<String> {
     None
 }
 
-fn normalize_path(path: &Path) -> PathBuf {
+pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     let mut parts = Vec::new();
     for component in path.components() {
         match component {
