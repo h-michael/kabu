@@ -46,11 +46,15 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
     // Handle interactive mode
     let worktree_path = if args.interactive {
-        run_interactive(&mut args, &config, provider.as_ref())?
+        run_interactive(&mut args, &config, provider.as_ref(), &repo_root)?
     } else {
         // Non-interactive: path is optional if config provides it
-        let path = if let Some(path) = args.path.clone() {
-            path
+        if let Some(path) = args.path.clone() {
+            if path.is_absolute() {
+                path
+            } else {
+                std::env::current_dir()?.join(&path)
+            }
         } else {
             // Try to generate path from config
             let branch = args
@@ -60,18 +64,13 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
                 .or(args.new_branch_force.as_ref())
                 .ok_or(Error::PathRequired)?;
 
-            let generated = config
-                .worktree
-                .generate_path(branch, &provider.repository_name()?)
-                .ok_or(Error::PathRequired)?;
-
-            PathBuf::from(generated)
-        };
-
-        if path.is_absolute() {
-            path
-        } else {
-            std::env::current_dir()?.join(&path)
+            template_path(
+                &config.worktree,
+                branch,
+                &provider.repository_name()?,
+                &repo_root,
+            )
+            .ok_or(Error::PathRequired)?
         }
     };
 
@@ -279,11 +278,31 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     Ok(())
 }
 
+/// Generate a worktree path from `worktree.path_template`.
+///
+/// A relative template is resolved against the main worktree root, not the
+/// current directory, so running `kabu add` from a subdirectory or from inside
+/// a linked worktree does not nest the new worktree under it.
+fn template_path(
+    worktree: &config::Worktree,
+    branch: &str,
+    repository: &str,
+    repo_root: &Path,
+) -> Option<PathBuf> {
+    let path = PathBuf::from(worktree.generate_path(branch, repository)?);
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        Some(interactive::normalize_path(&repo_root.join(path)))
+    }
+}
+
 /// Run interactive mode to select branch and path.
 fn run_interactive(
     args: &mut AddArgs,
     config: &Config,
     provider: &dyn VcsProvider,
+    repo_root: &Path,
 ) -> Result<PathBuf> {
     let current_dir = std::env::current_dir()?;
     let local_branches = provider.list_branches()?;
@@ -311,8 +330,11 @@ fn run_interactive(
     let suggest_path = {
         let repository = provider.repository_name().unwrap_or_default();
         let worktree = config.worktree.clone();
-        std::sync::Arc::new(move |branch: &str| worktree.generate_path(branch, &repository))
-            as std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>
+        let repo_root = repo_root.to_path_buf();
+        std::sync::Arc::new(move |branch: &str| {
+            template_path(&worktree, branch, &repository, &repo_root)
+                .and_then(|path| path.into_os_string().into_string().ok())
+        }) as std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>
     };
 
     let worktrees = provider.list_workspaces()?;

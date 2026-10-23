@@ -593,3 +593,48 @@ link:
         "committed content\n"
     );
 }
+
+const PATH_TEMPLATE_CONFIG: &str = r#"
+worktree:
+  path_template: "../wt/{{branch}}"
+"#;
+
+#[test]
+fn test_add_path_template_from_subdirectory_resolves_against_repo_root() {
+    let mut repo = TestRepo::with_config(PATH_TEMPLATE_CONFIG);
+    repo.create_file_and_commit("sub/dir/file.txt", "content\n", "Add subdir");
+
+    repo.kabu()
+        .current_dir(repo.path().join("sub/dir"))
+        .args(["add", "-b", "from-subdir"])
+        .assert()
+        .success();
+
+    let expected = repo.worktree_path("wt").join("from-subdir");
+    repo.register_worktree(expected.clone());
+
+    assert!(expected.join("README.md").exists());
+    assert!(!repo.path().join("sub/wt").exists());
+}
+
+#[test]
+fn test_add_path_template_from_linked_worktree_resolves_against_main_root() {
+    let mut repo = TestRepo::with_config(PATH_TEMPLATE_CONFIG);
+
+    repo.kabu().args(["add", "-b", "first"]).assert().success();
+    let first = repo.worktree_path("wt").join("first");
+    repo.register_worktree(first.clone());
+    assert!(first.join("README.md").exists());
+
+    repo.kabu()
+        .current_dir(&first)
+        .args(["add", "-b", "second"])
+        .assert()
+        .success();
+
+    let expected = repo.worktree_path("wt").join("second");
+    repo.register_worktree(expected.clone());
+
+    assert!(expected.join("README.md").exists());
+    assert!(!repo.worktree_path("wt").join("wt").exists());
+}
