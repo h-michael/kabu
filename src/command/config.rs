@@ -324,7 +324,7 @@ fn repo_config_template_yaml() -> String {
 #     - command: echo "Removing {{{{worktree_name}}}}"
 #   post_remove:
 #     - command: ./scripts/cleanup.sh
-#     - command: tmux kill-session -t "kabu-$KABU_WORKTREE_NAME" 2>/dev/null || true
+#     - command: tmux kill-session -t "=kabu-$KABU_WORKTREE_NAME:" 2>/dev/null || true
 #       description: Remove tmux session
 "#,
         schema_url()
@@ -404,7 +404,7 @@ fn repo_config_template_toml() -> String {
 # command = "./scripts/cleanup.sh"
 #
 # [[hooks.post_remove]]
-# command = "tmux kill-session -t \"kabu-$KABU_WORKTREE_NAME\" 2>/dev/null || true"
+# command = "tmux kill-session -t \"=kabu-$KABU_WORKTREE_NAME:\" 2>/dev/null || true"
 # description = "Remove tmux session"
 "#
 }
